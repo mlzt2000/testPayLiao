@@ -6,7 +6,7 @@ logger = telebot.logger
 telebot.logger.setLevel(logging.DEBUG)
 bot = telebot.TeleBot("5376242962:AAGxLOy-Yd8MMYvoxBft_7wULmL-GB2eFcM", parse_mode = None)
 
-payees = {}
+orders = []
 
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
@@ -22,22 +22,25 @@ def create_order(message):
 
 @bot.message_handler(commands=["add"])
 def add_option(message):
-    option = message.text[5:]
-    markup = types.ForceReply(selective=True)
-    bot.send_message(message, "Who made this order?", reply_markup=markup)
-    payee = message.text
-    if payee in payees:
-        payees[payee].append(option)
-    else: 
-        payees[payee] = [option]
+    msg = message.text[5:].split(" ")
+    option = msg[0]
+    payee = msg[1]
+    cost = msg[2]
+    orders.append(msg)
     bot.reply_to(message, f"{option} added!")
+    bot.reply_to(message, f"{payee} added!")
+    bot.reply_to(message, f"{cost} added!")
 
 @bot.message_handler(commands=["completeorder"])
 def complete_order(message):
-    pass
+    for i in orders:
+        option = i[0]
+        payee = i[1]
+        cost = i[2]
+        bot.reply_to(message, f"{payee} owes {cost} for {option}")
 
-@bot.message_handler(func = lambda m: True)
-def echo_all(message):
-    bot.reply_to(message, message.text)
+# @bot.message_handler(func = lambda m: True)
+# def echo_all(message):
+#     bot.reply_to(message, message.text)
 
 bot.infinity_polling()
