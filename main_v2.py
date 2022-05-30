@@ -33,11 +33,13 @@ def add_option(message):
 
 @bot.message_handler(commands=["completeorder"])
 def complete_order(message):
+    final = ""
     for i in orders:
         option = i[0]
         payee = i[1]
         cost = i[2]
-        bot.reply_to(message, f"{payee} owes {cost} for {option}")
+        final += f"{payee} owes {cost} for {option}\n"
+    bot.reply_to(message, final)
 
 # @bot.message_handler(func = lambda m: True)
 # def echo_all(message):
