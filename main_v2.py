@@ -18,7 +18,7 @@ def send_help(message):
 
 @bot.message_handler(commands=["createorder"])
 def create_order(message):
-    bot.reply_to(message, f"/add Followed by your order \n/completeorder When done")
+    bot.reply_to(message, f"/add Followed by your order in this format: OrderName NameOfPerson Cost \n/completeorder When done")
 
 @bot.message_handler(commands=["add"])
 def add_option(message):
@@ -27,9 +27,9 @@ def add_option(message):
     payee = msg[1]
     cost = msg[2]
     orders.append(msg)
-    bot.reply_to(message, f"{option} added!")
-    bot.reply_to(message, f"{payee} added!")
-    bot.reply_to(message, f"{cost} added!")
+    bot.reply_to(message, f"Order added!")
+    bot.reply_to(message, f"{payee} owes {cost} for {option}")
+    bot.reply_to(message, f"/add Followed by your order in this format: OrderName NameOfPerson Cost \n/completeorder When done")
 
 @bot.message_handler(commands=["completeorder"])
 def complete_order(message):
