@@ -40,6 +40,7 @@ def view_order(message):
         cost = i[2]
         final += f"{payee} owes {cost} for {option}\n"
     bot.reply_to(message, final)
+    bot.reply_to(message, f"/completeorder to send the poll!")
 
 @bot.message_handler(commands=["completeorder"])
 def complete_order(message):
