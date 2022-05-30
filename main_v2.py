@@ -42,7 +42,6 @@ def view_order(message):
 
 @bot.message_handler(commands=["completeorder"])
 def complete_order(message):
-    print(orders)
     bot.send_poll(
         chat_id = message.chat.id,
         question = "Have you paid?",
