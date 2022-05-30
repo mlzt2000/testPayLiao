@@ -18,7 +18,7 @@ def send_help(message):
 
 @bot.message_handler(commands=["createorder"])
 def create_order(message):
-    bot.reply_to(message, f"/add Followed by your order in this format: OrderName NameOfPerson Cost \n/completeorder When done")
+    bot.reply_to(message, f"/add Followed by your order in this format: OrderName NameOfPerson Cost \n/vieworder When done")
 
 @bot.message_handler(commands=["add"])
 def add_option(message):
@@ -29,10 +29,10 @@ def add_option(message):
     orders.append(msg)
     bot.reply_to(message, f"Order added!")
     bot.reply_to(message, f"{payee} owes {cost} for {option}")
-    bot.reply_to(message, f"/add Followed by your order in this format: OrderName NameOfPerson Cost \n/completeorder When done")
+    bot.reply_to(message, f"/add Followed by your order in this format: OrderName NameOfPerson Cost \n/vieworder When done")
 
-@bot.message_handler(commands=["completeorder"])
-def complete_order(message):
+@bot.message_handler(commands=["vieworder"])
+def view_order(message):
     final = ""
     for i in orders:
         option = i[0]
@@ -40,6 +40,16 @@ def complete_order(message):
         cost = i[2]
         final += f"{payee} owes {cost} for {option}\n"
     bot.reply_to(message, final)
+
+@bot.message_handler(commands=["completeorder"])
+def complete_order(message):
+    bot.send_poll(
+        question = "Have you paid?",
+        options = orders,
+        allows_multiple_answers=False,
+        is_anonymous=False,
+    )
+    orders.clear()
 
 # @bot.message_handler(func = lambda m: True)
 # def echo_all(message):
