@@ -4,7 +4,7 @@ from telebot import types
 
 logger = telebot.logger
 telebot.logger.setLevel(logging.DEBUG)
-bot = telebot.TeleBot("5376242962:AAGxLOy-Yd8MMYvoxBft_7wULmL-GB2eFcM", parse_mode = None)
+bot = telebot.TeleBot("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA", parse_mode = None)
 
 orders = []
 
@@ -26,31 +26,32 @@ def add_option(message):
     option = msg[0]
     payee = msg[1]
     cost = msg[2]
+    msg = f"{payee} owes {cost} for {option}"
     orders.append(msg)
     bot.reply_to(message, f"Order added!")
-    bot.reply_to(message, f"{payee} owes {cost} for {option}")
+    bot.reply_to(message, msg)
     bot.reply_to(message, f"/add Followed by your order in this format: OrderName NameOfPerson Cost \n/vieworder When done")
 
 @bot.message_handler(commands=["vieworder"])
 def view_order(message):
     final = ""
-    for i in orders:
-        option = i[0]
-        payee = i[1]
-        cost = i[2]
-        final += f"{payee} owes {cost} for {option}\n"
+    for order in orders:
+        final += f"{order}\n"
     bot.reply_to(message, final)
     bot.reply_to(message, f"/completeorder to send the poll!")
 
 @bot.message_handler(commands=["completeorder"])
 def complete_order(message):
+    print(orders)
     bot.send_poll(
+        chat_id = message.chat.id,
         question = "Have you paid?",
         options = orders,
         allows_multiple_answers=False,
         is_anonymous=False,
     )
     orders.clear()
+    
 
 # @bot.message_handler(func = lambda m: True)
 # def echo_all(message):
