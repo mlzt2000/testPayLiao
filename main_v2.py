@@ -4,7 +4,7 @@ from telebot import types
 
 logger = telebot.logger
 telebot.logger.setLevel(logging.DEBUG)
-bot = telebot.TeleBot("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA", parse_mode = None)
+bot = telebot.TeleBot("5376242962:AAGxLOy-Yd8MMYvoxBft_7wULmL-GB2eFcM", parse_mode = None)
 
 orders = []
 
