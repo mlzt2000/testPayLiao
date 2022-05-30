@@ -1,45 +1,59 @@
-import logging
-from telegram import Update, ForceReply
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+import telebot
+import logging 
+from telebot import types
 
-token = "5376242962:AAGxLOy-Yd8MMYvoxBft_7wULmL-GB2eFcM"
+logger = telebot.logger
+telebot.logger.setLevel(logging.DEBUG)
+bot = telebot.TeleBot("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA", parse_mode = None)
 
-def echo(update: Update, _: CallbackContext) -> None:
-    """Echo the user message."""
-    update.message.reply_text(f"you said {update.message.text}")
+orders = []
 
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, f"Thank you for using PayLiaoBot!\nCreate a new order with /createorder, or view all commands with /help!")
 
-def start(update: Update, _: CallbackContext):
-    update.message.reply_text(f"Thank you for using PayLiaoBot!\nCreate a new order with /ordernow, or view all commands with /help!")
+@bot.message_handler(commands=['help'])
+def send_help(message):
+    bot.reply_to(message, f"/createorder: start a new order")
 
-def help(update: Update, _: CallbackContext):
-    update.message.reply_text(f"/ordernow: start a new order")
+@bot.message_handler(commands=["createorder"])
+def create_order(message):
+    bot.reply_to(message, f"/add Followed by your order in this format: OrderName NameOfPerson Cost \n/vieworder When done")
 
-def order_now(update: Update, _: CallbackContext):
-    update.message.poll("Who order what?")
+@bot.message_handler(commands=["add"])
+def add_option(message):
+    msg = message.text[5:].split(" ")
+    option = msg[0]
+    payee = msg[1]
+    cost = msg[2]
+    msg = f"{payee} owes {cost} for {option}"
+    orders.append(msg)
+    bot.reply_to(message, f"Order added!")
+    bot.reply_to(message, msg)
+    bot.reply_to(message, f"/add Followed by your order in this format: OrderName NameOfPerson Cost \n/vieworder When done")
 
-def main():
-    # Create the Updater and pass it your bot's token.
-    updater = Updater(token)
+@bot.message_handler(commands=["vieworder"])
+def view_order(message):
+    final = ""
+    for order in orders:
+        final += f"{order}\n"
+    bot.reply_to(message, final)
+    bot.reply_to(message, f"/completeorder to send the poll!")
 
-    # Get the dispatcher to register handlers
-    dispatcher = updater.dispatcher
-
-    # on different commands - answer in Telegram
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CommandHandler("help", help))
-    dispatcher.add_handler(CommandHandler("ordernow", order_now))
+@bot.message_handler(commands=["completeorder"])
+def complete_order(message):
+    bot.send_poll(
+        chat_id = message.chat.id,
+        question = "Have you paid?",
+        options = orders,
+        allows_multiple_answers=False,
+        is_anonymous=False,
+    )
+    orders.clear()
     
-    # on non command i.e message - echo the message on Telegram
-    dispatcher.add_handler(MessageHandler(Filters.text, echo))
 
-    # Start the Bot
-    updater.start_polling()
+# @bot.message_handler(func = lambda m: True)
+# def echo_all(message):
+#     bot.reply_to(message, message.text)
 
-    # Run the bot until you press Ctrl-C or the process receives SIGINT,
-    # SIGTERM or SIGABRT. This should be used most of the time, since
-    # start_polling() is non-blocking and will stop the bot gracefully.
-    updater.idle()
-
-if __name__ == '__main__':
-    main()
+bot.infinity_polling()
