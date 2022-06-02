@@ -1,5 +1,53 @@
-import telebot
 import logging 
+from telegram import Update
+from telegram.ext import Updater, CallbackContext, CommandHandler, MessageHandler, Filters
+
+orders: str = []
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.INFO
+)
+
+def start(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text(f"Thank you for using PayLiaoBot!\nCreate a new order with /createorder, or view all commands with /help!")
+
+def help(update: Update, context: CallbackContext) -> None:
+    all_cmds = [
+        "/createorder:         Clears current order and starts allowing options to be added",
+        "/add Name Order Cost: Adds an option where Name orders Order for Cost dollars",
+        "/vieworder:           Views all options in the current order",
+        "/completeorder:       Sends the current order as a poll into the chat and resets the order"    
+    ]
+    update.message.reply_text(str.join(all_cmds, "\n"))
+
+def create_order(update: Update, context: CallbackContext) -> None:
+    ## give a warning here about clearing order? potentially need to provide the means of creating multiple orders
+    orders.clear()
+    
+    
+
+def main():
+    updater = Updater("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA")
+    dispatcher = updater.dispatcher
+
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(CommandHandler("help", help))
+    dispatcher.add_handler(CommandHandler("createorder", create_order))
+    dispatcher.add_handler(CommandHandler("add", add_option))
+    dispatcher.add_handler(CommandHandler("vieworder", view_order))
+    dispatcher.add_handler(CommandHandler("completeorder", complete_order))
+
+    dispatcher.add_handler(MessageHandler(Filters.text, unknown_cmd))
+
+    updater.start_polling()
+
+    updater.idle()
+
+if __name__ == "main":
+    main()
+
+import telebot
 from telebot import types
 
 logger = telebot.logger
