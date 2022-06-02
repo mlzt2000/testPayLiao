@@ -56,18 +56,6 @@ bot = telebot.TeleBot("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA", parse_mo
 
 orders = []
 
-@bot.message_handler(commands=['start'])
-def send_welcome(message):
-    bot.reply_to(message, f"Thank you for using PayLiaoBot!\nCreate a new order with /createorder, or view all commands with /help!")
-
-@bot.message_handler(commands=['help'])
-def send_help(message):
-    bot.reply_to(message, f"/createorder: start a new order")
-
-@bot.message_handler(commands=["createorder"])
-def create_order(message):
-    bot.reply_to(message, f"/add Followed by your order in this format: OrderName NameOfPerson Cost \n/vieworder When done")
-
 @bot.message_handler(commands=["add"])
 def add_option(message):
     msg = message.text[5:].split(" ")
