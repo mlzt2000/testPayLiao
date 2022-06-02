@@ -2,6 +2,13 @@ import logging
 from telegram import Update
 from telegram.ext import Updater, CallbackContext, CommandHandler, MessageHandler, Filters
 
+
+all_cmds: str = [
+    "/createorder --> Clears current order and starts allowing options to be added",
+    "/add Name Purchase Cost --> Adds a purchase where Name buys Purchase for Cost dollars",
+    "/vieworder --> Views all options in the current order",
+    "/completeorder --> Sends the current order as a poll into the chat and resets the order"    
+]
 orders: str = []
 
 logging.basicConfig(
@@ -13,20 +20,21 @@ def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(f"Thank you for using PayLiaoBot!\nCreate a new order with /createorder, or view all commands with /help!")
 
 def help(update: Update, context: CallbackContext) -> None:
-    all_cmds = [
-        "/createorder:         Clears current order and starts allowing options to be added",
-        "/add Name Order Cost: Adds an option where Name orders Order for Cost dollars",
-        "/vieworder:           Views all options in the current order",
-        "/completeorder:       Sends the current order as a poll into the chat and resets the order"    
-    ]
     update.message.reply_text(str.join(all_cmds, "\n"))
 
 def create_order(update: Update, context: CallbackContext) -> None:
     ## give a warning here about clearing order? potentially need to provide the means of creating multiple orders
     orders.clear()
-    
-    
+    update.message.reply_text(f"/add Name Purchase Cost: Adds an option where Name buys Purchase for Cost dollars")
 
+def add_option(update: Update, context: CallbackContext) -> None:
+    text = update.message.text.split(" ")[1:]
+    name, purchase, cost = text[0], text[1], text[2]
+    msg = f"{name} buys {purchase} for ${cost}"
+    update.message.reply_text(f"{msg}\n\n/vieworder --> Views all options in the current order\n\n/completeorder --> Sends the current order as a poll into the chat and resets the order")
+
+
+    
 def main():
     updater = Updater("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA")
     dispatcher = updater.dispatcher
@@ -55,6 +63,18 @@ telebot.logger.setLevel(logging.DEBUG)
 bot = telebot.TeleBot("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA", parse_mode = None)
 
 orders = []
+
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    bot.reply_to(message, f"Thank you for using PayLiaoBot!\nCreate a new order with /createorder, or view all commands with /help!")
+
+@bot.message_handler(commands=['help'])
+def send_help(message):
+    bot.reply_to(message, f"/createorder: start a new order")
+
+@bot.message_handler(commands=["createorder"])
+def create_order(message):
+    bot.reply_to(message, f"/add Followed by your order in this format: OrderName NameOfPerson Cost \n/vieworder When done")
 
 @bot.message_handler(commands=["add"])
 def add_option(message):
