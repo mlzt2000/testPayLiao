@@ -46,9 +46,6 @@ def complete_order(update: Update, context: CallbackContext) -> None:
         is_anonymous = False,
         allows_multiple_answers = True
     )
-
-
-
     
 def main():
     updater = Updater("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA")
