@@ -19,7 +19,7 @@ def start(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(f"Thank you for using PayLiaoBot!\nCreate a new order with /createorder, or view all commands with /help!")
 
 def help(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(str.join(all_cmds, "\n"))
+    update.message.reply_text("\n".join(all_cmds))
 
 def create_order(update: Update, context: CallbackContext) -> None:
     ## give a warning here about clearing order? potentially need to provide the means of creating multiple orders
