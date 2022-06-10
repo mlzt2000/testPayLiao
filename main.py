@@ -1,66 +1,142 @@
+from ast import Call
 import logging 
-from telegram import Update
-from telegram.ext import Updater, CallbackContext, CommandHandler, MessageHandler, Filters
+from telegram import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Update
+from telegram.ext import (
+    Updater,
+    CommandHandler,
+    MessageHandler,
+    Filters,
+    ConversationHandler,
+    CallbackQueryHandler,
+    CallbackContext,
+)
 
-all_cmds: str = [
-    "/createorder --> Clears current order and starts allowing options to be added",
-    "/add Name Purchase Cost --> Adds a purchase where Name buys Purchase for Cost dollars",
-    "/vieworder --> Views all options in the current order",
-    "/completeorder --> Sends the current order as a poll into the chat and resets the order"    
-]
-orders: str = []
-
+# Enable logging
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
+
 )
 
-def start(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(f"Thank you for using PayLiaoBot!\nCreate a new order with /createorder, or view all commands with /help!")
+# stand-in for a SQL database in the form of Dict[table_name: str, table: Table]
+# --> Table is the form Dict[primary_key: id, data: List[Any]]
+database = {
+    "Orders": {},
+    "Chats": {},
+    "Users": {},
+}
 
-def help(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text("\n".join(all_cmds))
+# State definitions 
+SELECTING_ACTION, CREATE_ORDER, SHOW_ALL_ORDERS = map(str, range(3))
 
-def create_order(update: Update, context: CallbackContext) -> None:
-    ## give a warning here about clearing order? potentially need to provide the means of creating multiple orders
-    orders.clear()
-    update.message.reply_text(f"/add Name Purchase Cost: Adds an option where Name buys Purchase for Cost dollars")
+#Shortcut for ConversationHandler.END
+END = ConversationHandler.END
 
-def add_option(update: Update, context: CallbackContext) -> None:
-    text = update.message.text.split(" ")[1:]
-    name, purchase, cost = text[0], text[1], text[2]
-    msg = f"Order added! {name} buys {purchase} for ${cost}"
-    update.message.reply_text(f"{msg}\n\n/vieworder --> Views all options in the current order\n\n/completeorder --> Sends the current order as a poll into the chat and resets the order")
+# Constants
+(
+    START_OVER,
 
-def view_order(update: Update, context: CallbackContext) -> None:
-    msg = str.join(orders, "\n")
-    update.message.reply_text(f"{msg}")
+) = map(chr, range(3, 4))
 
-def complete_order(update: Update, context: CallbackContext) -> None:
-    update_chat_id = update.message.chat.id
-    context.bot.send_poll(
-        chat_id = update_chat_id,
-        question = f"Who order what",
-        options = orders,
-        is_anonymous = False,
-        allows_multiple_answers = True
+
+
+def start(update: Update, context: CallbackContext) -> str:
+    """Select an action: View existing orders or start new order"""
+    desc = (
+        "You can view existing orders or start a new order. To stop, type /stop"
     )
     
-def unknown_cmd(update: Update, context: CallbackContext) -> None:
-    update.message.reply_text(f"Unknown_cmd!")
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text = 'View existing orders',
+                callback_data = str(SHOW_ALL_ORDERS)
+            ),
+            InlineKeyboardButton(
+                text = 'Create new order',
+                callback_data = str(CREATE_ORDER)
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text = 'Done',
+                callback_data = str(END)
+            )
+        ]
+    ]
+    keyboard = InlineKeyboardMarkup(buttons)
+
+    if context.user_data.get(START_OVER):
+        update.callback_query.answer()
+        update.callback_query.edit_message_text(
+            text = desc,
+            reply_markup = keyboard
+        )
+    else:
+        update.message.reply_text(
+            "Thank you for using PayLahBot! I can help you collect orders and payments."
+        )
+        update.message.reply_text(
+            text = desc,
+            reply_markup = keyboard
+        )
+    
+    context.user_data[START_OVER] = False
+    return SELECTING_ACTION
+
+def show_all_orders(update: Update, context = CallbackContext) -> str:
+
+
+def help(update: Update, context: CallbackContext) -> None:
+    update.message.reply_text(f"/start to start the bot")
 
 def main():
     updater = Updater("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA")
     dispatcher = updater.dispatcher
 
-    dispatcher.add_handler(CommandHandler("start", start))
-    dispatcher.add_handler(CommandHandler("help", help))
-    dispatcher.add_handler(CommandHandler("createorder", create_order))
-    dispatcher.add_handler(CommandHandler("add", add_option))
-    dispatcher.add_handler(CommandHandler("vieworder", view_order))
-    dispatcher.add_handler(CommandHandler("completeorder", complete_order))
+    # _handler = ConversationHandler(
+    #     entry_points = [
+    #         CallbackQueryHandler(lvl_two, pattern = '^' + str(LVLTWO) + '$')
+    #     ],
+    #     states = {
+            
+    #     },
+    #     fallbacks = [
 
-    dispatcher.add_handler(MessageHandler(Filters.text, unknown_cmd))
+    #     ],
+    #     map_to_parent = {
+    #         SHOWING: SHOWING,
+    #         STOPPING: END,
+    #     }
+    # )
+
+    # Top level ConversationHandler (selecting action)
+    selection_handlers = [
+        # _handler,
+        CallbackQueryHandler(
+            show_all_orders, 
+            pattern = '^' + str(SHOW_ALL_ORDERS)
+        ),
+        CallbackQueryHandler(
+
+        )
+    ]
+
+    conv_handler = ConversationHandler(
+        entry_points = [
+            CommandHandler("start", start)
+        ],
+        states = {
+            SHOWING: [CallbackQueryHandler(start, pattern='^' + str(END) + '$')],
+            SELECTING_ACTION: selection_handlers,
+            STOPPING: [CommandHandler('start', start)]
+        },
+        fallbacks = [
+            CommandHandler('stop', stop)
+        ],
+    )
+
+    dispatcher.add_handler(conv_handler)
 
     updater.start_polling()
 
