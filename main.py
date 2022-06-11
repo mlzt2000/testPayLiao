@@ -23,7 +23,7 @@ logging.basicConfig(
 # see database.sql file for actual sql tables
 database = {
     "Orders": {
-        1: (1, "eg_chat_id", "eg_datetime", "eg_order")
+        1: (1, "eg_chat_id", "eg_datetime", "eg_order"),
         2: (2, "eg_chat_id_2", )
     },
     "Items": {
