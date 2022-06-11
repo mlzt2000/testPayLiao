@@ -48,6 +48,9 @@ END = ConversationHandler.END
 ) = map(chr, range(5, 6))
 
 
+#######################
+# TOP LEVEL FUNCTIONS #
+#######################
 
 def start(update: Update, context: CallbackContext) -> str:
     """Select an action: View existing orders or start new order"""
@@ -94,9 +97,9 @@ def start(update: Update, context: CallbackContext) -> str:
     return SELECTING_ACTION
 
 def show_all_orders(update: Update, context = CallbackContext) -> str:
-    chat_id = update.message.chat.id
+    # chat_id = update.message.chat.id
     all_orders: Dict[int, Tuple[Any]] = database['Orders']
-    out = [to_string(order_id, order) for order_id, order in all_orders.values() if order['chat_id'] == chat_id]
+    out = [to_string(order_id, order) for order_id, order in all_orders.items()]
     
     buttons = [
         [InlineKeyboardButton(
@@ -131,6 +134,20 @@ def stop(update: Update, context: CallbackContext) -> int:
 
     return END
 
+def end(update: Update, context: CallbackContext) -> int:
+    """End conversation from InlineKeyboardButton."""
+    update.callback_query.answer()
+
+    text = 'See you around!'
+    update.callback_query.edit_message_text(text=text)
+
+    return END
+
+
+########
+# MAIN #
+########
+
 def main():
     updater = Updater("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA")
     dispatcher = updater.dispatcher
@@ -159,7 +176,8 @@ def main():
             pattern = '^' + str(SHOW_ALL_ORDERS)
         ),
         CallbackQueryHandler(
-
+            end,
+            pattern = "^" + str(END) + 'S'
         )
     ]
 
@@ -183,5 +201,5 @@ def main():
 
     updater.idle()
 
-if __name__ == "main":
+if __name__ == "__main__":
     main()
