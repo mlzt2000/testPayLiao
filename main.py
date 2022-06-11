@@ -101,8 +101,9 @@ def show_all_orders(update: Update, context = CallbackContext) -> str:
     buttons = [
         [InlineKeyboardButton(
             text = "Back",
-            callbakc_data = str(END)
-        )]
+            callback_data = str(END)
+        )
+        ]
     ]
     keyboard = InlineKeyboardMarkup(buttons)
 
@@ -120,10 +121,15 @@ def to_string(order_id: int, order: Tuple[Any]) -> str:
     out = [str(item) for item in items_in_order]
     return out
 
-        
 
 def help(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(f"/start to start the bot")
+
+def stop(update: Update, context: CallbackContext) -> int:
+    """End Conversation by command."""
+    update.message.reply_text('Okay, bye.')
+
+    return END
 
 def main():
     updater = Updater("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA")
