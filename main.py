@@ -24,16 +24,18 @@ logging.basicConfig(
 database = {
     "Orders": {
         1: (1, "eg_chat_id", "eg_datetime", "eg_order"),
-        2: (2, "eg_chat_id_2", )
+        2: (2, "eg_chat_id_2", "eg_datetime_2", "eg_order_2")
     },
     "Items": {
         1: (1, 2, 5.00, "eg_item_1"),
-        2: (1, 3, 10.00, "eg_item_2")
+        2: (1, 3, 10.00, "eg_item_2"),
+        3: (2, 3, 3.00, "eg_item_3"),
+        4: (2, 1, 4.00, "eg_item_4")
     }
 }
 
 # State definitions 
-SELECTING_ACTION, CREATE_ORDER, SHOW_ALL_ORDERS = map(str, range(3))
+SELECTING_ACTION, CREATING_ORDER, SHOWING_ALL_ORDERS = map(str, range(3))
 
 # Meta states
 STOPPING, SHOWING = map(str, range(3, 5))
@@ -62,11 +64,11 @@ def start(update: Update, context: CallbackContext) -> str:
         [
             InlineKeyboardButton(
                 text = 'View existing orders',
-                callback_data = str(SHOW_ALL_ORDERS)
+                callback_data = str(SHOWING_ALL_ORDERS)
             ),
             InlineKeyboardButton(
                 text = 'Create new order',
-                callback_data = str(CREATE_ORDER)
+                callback_data = str(CREATING_ORDER)
             )
         ],
         [
@@ -98,8 +100,9 @@ def start(update: Update, context: CallbackContext) -> str:
 
 def show_all_orders(update: Update, context = CallbackContext) -> str:
     # chat_id = update.message.chat.id
-    all_orders: Dict[int, Tuple[Any]] = database['Orders']
-    out = [to_string(order_id, order) for order_id, order in all_orders.items()]
+    all_orders = list(database['Orders'].items())
+    all_orders.sort(key = lambda x: x[0]) # should sort by chronological order, for now is sorted by id
+    out = [order_to_string(order_id, order) for order_id, order in all_orders]
     
     buttons = [
         [InlineKeyboardButton(
@@ -112,17 +115,20 @@ def show_all_orders(update: Update, context = CallbackContext) -> str:
 
     update.callback_query.answer()
     update.callback_query.edit_message_text(
-        text = out,
+        text = "/n".join(out),
         reply_markup = keyboard
     )
     context.user_data[START_OVER] = True
     return SHOWING
 
-def to_string(order_id: int, order: Tuple[Any]) -> str:
+def order_to_string(order_id: int, order: Tuple[Any]) -> str:
     all_items = database["Items"]
-    items_in_order = list(filter(lambda x: x[0] == order_id, all_items.values()))
-    out = [str(item) for item in items_in_order]
-    return out
+    items_in_order_id = list(filter(lambda x: x[0] == order_id, all_items.values()))
+    out = [str(item) for item in items_in_order_id]
+    return "\n".join(out)
+
+def create_new_order(update: Update, context: CallbackContext) -> str:
+    pass
 
 
 def help(update: Update, context: CallbackContext) -> None:
@@ -173,11 +179,15 @@ def main():
         # _handler,
         CallbackQueryHandler(
             show_all_orders, 
-            pattern = '^' + str(SHOW_ALL_ORDERS)
+            pattern = "^" + str(SHOWING_ALL_ORDERS) + "$"
+        ),
+        CallbackQueryHandler(
+            create_new_order,
+            pattern = "^" + str(CREATING_ORDER) + "$"
         ),
         CallbackQueryHandler(
             end,
-            pattern = "^" + str(END) + 'S'
+            pattern = "^" + str(END) + "$"
         )
     ]
 
@@ -188,6 +198,7 @@ def main():
         states = {
             SHOWING: [CallbackQueryHandler(start, pattern='^' + str(END) + '$')],
             SELECTING_ACTION: selection_handlers,
+            CREATING_ORDER: selection_handlers,
             STOPPING: [CommandHandler('start', start)]
         },
         fallbacks = [
