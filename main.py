@@ -1,5 +1,6 @@
 from ast import Call
 import logging 
+from typing import Dict, List, Tuple, Any
 from telegram import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.ext import (
     Updater,
@@ -19,15 +20,23 @@ logging.basicConfig(
 )
 
 # stand-in for a SQL database in the form of Dict[table_name: str, table: Table]
-# --> Table is the form Dict[primary_key: id, data: List[Any]]
+# see database.sql file for actual sql tables
 database = {
-    "Orders": {},
-    "Chats": {},
-    "Users": {},
+    "Orders": {
+        1: (1, "eg_chat_id", "eg_datetime", "eg_order")
+        2: (2, "eg_chat_id_2", )
+    },
+    "Items": {
+        1: (1, 2, 5.00, "eg_item_1"),
+        2: (1, 3, 10.00, "eg_item_2")
+    }
 }
 
 # State definitions 
 SELECTING_ACTION, CREATE_ORDER, SHOW_ALL_ORDERS = map(str, range(3))
+
+# Meta states
+STOPPING, SHOWING = map(str, range(3, 5))
 
 #Shortcut for ConversationHandler.END
 END = ConversationHandler.END
@@ -36,7 +45,7 @@ END = ConversationHandler.END
 (
     START_OVER,
 
-) = map(chr, range(3, 4))
+) = map(chr, range(5, 6))
 
 
 
@@ -85,7 +94,33 @@ def start(update: Update, context: CallbackContext) -> str:
     return SELECTING_ACTION
 
 def show_all_orders(update: Update, context = CallbackContext) -> str:
+    chat_id = update.message.chat.id
+    all_orders: Dict[int, Tuple[Any]] = database['Orders']
+    out = [to_string(order_id, order) for order_id, order in all_orders.values() if order['chat_id'] == chat_id]
+    
+    buttons = [
+        [InlineKeyboardButton(
+            text = "Back",
+            callbakc_data = str(END)
+        )]
+    ]
+    keyboard = InlineKeyboardMarkup(buttons)
 
+    update.callback_query.answer()
+    update.callback_query.edit_message_text(
+        text = out,
+        reply_markup = keyboard
+    )
+    context.user_data[START_OVER] = True
+    return SHOWING
+
+def to_string(order_id: int, order: Tuple[Any]) -> str:
+    all_items = database["Items"]
+    items_in_order = list(filter(lambda x: x[0] == order_id, all_items.values()))
+    out = [str(item) for item in items_in_order]
+    return out
+
+        
 
 def help(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(f"/start to start the bot")
