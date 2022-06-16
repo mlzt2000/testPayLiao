@@ -1,6 +1,7 @@
 CREATE TABLE Orders (
     id INTEGER PRIMARY KEY,
     payer_id INTEGER NOT NULL,
+    chat_id INTEGER,
     datetime_created DATETIME NOT NULL,
     descr TEXT
 );
@@ -10,5 +11,5 @@ CREATE TABLE Items (
     order_id INTEGER NOT NULL REFERENCES Orders(id),
     payee_id INTEGER NOT NULL,
     cost FLOAT NOT NULL,
-    descr TEXT
+    descr TEXT NOT NULL
 );

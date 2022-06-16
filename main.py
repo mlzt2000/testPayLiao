@@ -46,8 +46,8 @@ END = ConversationHandler.END
 # Constants
 (
     START_OVER,
-
-) = map(chr, range(5, 6))
+    CURRENT_LEVEL,
+) = map(chr, range(5, 7))
 
 
 #######################
@@ -115,7 +115,7 @@ def show_all_orders(update: Update, context = CallbackContext) -> str:
 
     update.callback_query.answer()
     update.callback_query.edit_message_text(
-        text = "/n".join(out),
+        text = "\n\n".join(out),
         reply_markup = keyboard
     )
     context.user_data[START_OVER] = True
@@ -124,11 +124,17 @@ def show_all_orders(update: Update, context = CallbackContext) -> str:
 def order_to_string(order_id: int, order: Tuple[Any]) -> str:
     all_items = database["Items"]
     items_in_order_id = list(filter(lambda x: x[0] == order_id, all_items.values()))
-    out = [str(item) for item in items_in_order_id]
+    out = [item_to_string(item) for item in items_in_order_id]
+    out.insert(0, f"Order {order_id}, created at {order[2]}, paid by {order[0]}")
     return "\n".join(out)
 
+def item_to_string(item: Tuple[Any]) -> str:
+    out = f"{item[1]} bought {item[3]} for ${item[2]:.2f}"
+    return out
+
 def create_new_order(update: Update, context: CallbackContext) -> str:
-    pass
+    context.user_data[CURRENT_LEVEL] = CREATING_ORDER
+
 
 
 def help(update: Update, context: CallbackContext) -> None:
