@@ -34,11 +34,14 @@ database = {
     }
 }
 
-# State definitions 
+# State definitions for top level
 SELECTING_ACTION, CREATING_ORDER, SHOWING_ALL_ORDERS = map(str, range(3))
 
+# State definitions for second level (showing orders)
+SHOW_ORDERS_BOUGHT, SHOW_ORDERS_PAID = map(str, range(3, 5))
+
 # Meta states
-STOPPING, SHOWING = map(str, range(3, 5))
+STOPPING, SHOWING = map(str, range(5, 7))
 
 #Shortcut for ConversationHandler.END
 END = ConversationHandler.END
@@ -47,7 +50,7 @@ END = ConversationHandler.END
 (
     START_OVER,
     CURRENT_LEVEL,
-) = map(chr, range(5, 7))
+) = map(chr, range(7, 9))
 
 
 #######################
@@ -105,10 +108,21 @@ def show_all_orders(update: Update, context = CallbackContext) -> str:
     out = [order_to_string(order_id, order) for order_id, order in all_orders]
     
     buttons = [
-        [InlineKeyboardButton(
-            text = "Back",
-            callback_data = str(END)
-        )
+        [
+            InlineKeyboardButton(
+                text = "Show orders you paid",
+                callback_data = str(SHOW_ORDERS_PAID)
+            ),
+            InlineKeyboardButton(
+                text = "Show orders you bought",
+                callback_data = str(SHOW_ORDERS_BOUGHT)
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text = "Back",
+                callback_data = str(END)
+            ),
         ]
     ]
     keyboard = InlineKeyboardMarkup(buttons)
@@ -132,11 +146,6 @@ def item_to_string(item: Tuple[Any]) -> str:
     out = f"{item[1]} bought {item[3]} for ${item[2]:.2f}"
     return out
 
-def create_new_order(update: Update, context: CallbackContext) -> str:
-    context.user_data[CURRENT_LEVEL] = CREATING_ORDER
-
-
-
 def help(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(f"/start to start the bot")
 
@@ -155,6 +164,21 @@ def end(update: Update, context: CallbackContext) -> int:
 
     return END
 
+##########################
+# SECOND LEVEL FUNCTIONS #
+##########################
+
+def create_new_order(update: Update, context: CallbackContext) -> str:
+    ## Answering the user
+    text = "Name this order."
+    update.callback_query.answer()
+    update.callback_query.edit_message_text(text=text)
+
+    ## Create an empty order in the database
+    new_order_id = database["Orders"].size()
+    database["Orders"][new_order_id] = ()
+
+    return TYPING
 
 ########
 # MAIN #
@@ -164,21 +188,23 @@ def main():
     updater = Updater("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA")
     dispatcher = updater.dispatcher
 
-    # _handler = ConversationHandler(
-    #     entry_points = [
-    #         CallbackQueryHandler(lvl_two, pattern = '^' + str(LVLTWO) + '$')
-    #     ],
-    #     states = {
-            
-    #     },
-    #     fallbacks = [
+    # Second level ConversationHandler (creating order)
+    create_order_handler = ConversationHandler(
+        entry_points = [
+            CallbackQueryHandler(create_new_order, pattern = '^' + str(CREATING_ORDER) + '$')
+        ],
+        states = {
+            TYPING: [MessageHandler(Filters.text & ~Filters.command, save_order)],
 
-    #     ],
-    #     map_to_parent = {
-    #         SHOWING: SHOWING,
-    #         STOPPING: END,
-    #     }
-    # )
+        },
+        fallbacks = [
+
+        ],
+        map_to_parent = {
+            SHOWING: SHOWING,
+            STOPPING: END,
+        }
+    )
 
     # Top level ConversationHandler (selecting action)
     selection_handlers = [
