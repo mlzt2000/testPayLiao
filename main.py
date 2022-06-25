@@ -34,23 +34,63 @@ database = {
     }
 }
 
+class Order:
+
+    def __init__(self, name, date, time, payer):
+        self.name = name
+        self.date = date
+        self.time = time
+        self.payer = payer
+        self.open = True
+        self.options = []
+    
+    def add_options(self, option):
+        self.options.append(option)
+    
+    def remove_option(self, id):
+        self.options.remove(id)
+    
+    def get_title(self):
+        return "{} created on {} {} by {}".format(self.name, self.date, self.time, self.payer)
+
+    def printer(self, title, options):
+        option_str = "\n".join(options)
+        return title + "\n" + option_str
+
+    def print_all(self):
+        option_lst = []
+        for option in self.options:
+            option_lst.append(option.to_string())
+        return self.printer(self.get_title(), option_lst)
+    
+    def print_unpaid(self):
+        option_lst = []
+        for option in self.options:
+            if not option.is_paid():
+                option_lst.append(option.to_string())
+        title = self.get_title() + " unpaid"
+        return self.printer(title, option_lst)
+
 # State definitions for top level
 SELECTING_ACTION, NAME_ORDER, SHOW_OPEN_SELF_PAYER, SHOW_OPEN, SHOW_UNPAID_SELF_PAYER, SHOW_UNPAID_SELF_PAYEE, SHOW_ALL = map(str, range(7))
 
 # State definitions for creating new order (NAME_ORDER)
 CONFIRM_NAME, ACCEPT_NAME, REJECT_NAME = map(str, range(7, 10))
 
-
+# State definitions for closing order (SHOW_OPEN_SELF_PAYER)
+CONFIRM_CLOSURE, ACCEPT_CLOSURE = map(str, range(10, 12))
 
 # State definitions for adding options (SHOW_OPEN)
-ADD_DESC, ADD_COST, CONFIRM_OPTION, ACCEPT_OPTION, REJECT_OPTION = map(str, range(9, 14))
+ADD_DESC, ADD_COST, CONFIRM_OPTION, ACCEPT_OPTION, REJECT_OPTION = map(str, range(12, 17))
 
-# State definitions for acknowledging payments
+# State definitions for acknowledging payments (SHOW_UNPAID_SELF_PAYER)
+SELECT_PAYMENT, CONFIRM_PAYMENT, ACCEPT_PAYMENT, REJECT_PAYMENT = map(str, range(17,21))
 
+# State definitions for paying (SHOW_UNPAID_SELF_PAYEE)
+SELECT_UNPAID_OPTION, PROVIDE_PROOF, CONFIRM_PROOF = map(str, range(21, 24))
 
 # State definitions for showing
-SHOW_ORDERS_BOUGHT, SHOW_ORDERS_PAID, ADDING_OPTION = map(str, range(3, 6))
-
+SHOW_PAYEE, SHOW_PAYEE_UNPAID, SHOW_ALL_UNPAID, SHOW_PAYER, SHOW_PAYER_UNPAID = map(str, range(25, 30))
 
 #Shortcut for ConversationHandler.END
 END = ConversationHandler.END
@@ -59,7 +99,7 @@ END = ConversationHandler.END
 (
     START_OVER,
     CURRENT_LEVEL,
-) = map(chr, range(8, 10))
+) = map(chr, range(30, 32))
 
 
 #######################
@@ -76,11 +116,11 @@ def start(update: Update, context: CallbackContext) -> str:
         [
             InlineKeyboardButton(
                 text = 'View existing orders',
-                callback_data = str(SHOWING_ALL_ORDERS)
+                callback_data = str(SHOW_ALL)
             ),
             InlineKeyboardButton(
                 text = 'Create new order',
-                callback_data = str(CREATING_ORDER)
+                callback_data = str(NAME_ORDER)
             )
         ],
         [
@@ -120,11 +160,17 @@ def show_all_orders(update: Update, context = CallbackContext) -> str:
         [
             InlineKeyboardButton(
                 text = "Show orders you paid",
-                callback_data = str(SHOW_ORDERS_PAID)
+                callback_data = str(SHOW_PAYER)
             ),
             InlineKeyboardButton(
                 text = "Show orders you bought",
-                callback_data = str(SHOW_ORDERS_BOUGHT)
+                callback_data = str(SHOW_PAYEE)
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text = "Show all outstanding payments",
+                callback_data = str(SHOW_ALL_UNPAID)
             )
         ],
         [
@@ -142,7 +188,7 @@ def show_all_orders(update: Update, context = CallbackContext) -> str:
         reply_markup = keyboard
     )
     context.user_data[START_OVER] = True
-    return SHOWING
+    return SHOW_ALL
 
 def order_to_string(order_id: int, order: Tuple[Any]) -> str:
     all_items = database["Items"]
