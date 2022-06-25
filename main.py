@@ -35,13 +35,22 @@ database = {
 }
 
 # State definitions for top level
-SELECTING_ACTION, CREATING_ORDER, SHOWING_ALL_ORDERS = map(str, range(3))
+SELECTING_ACTION, NAME_ORDER, SHOW_OPEN_SELF_PAYER, SHOW_OPEN, SHOW_UNPAID_SELF_PAYER, SHOW_UNPAID_SELF_PAYEE, SHOW_ALL = map(str, range(7))
 
-# State definitions for second level (showing orders)
-SHOW_ORDERS_BOUGHT, SHOW_ORDERS_PAID = map(str, range(3, 5))
+# State definitions for creating new order (NAME_ORDER)
+CONFIRM_NAME, ACCEPT_NAME, REJECT_NAME = map(str, range(7, 10))
 
-# Meta states
-STOPPING, SHOWING = map(str, range(5, 7))
+
+
+# State definitions for adding options (SHOW_OPEN)
+ADD_DESC, ADD_COST, CONFIRM_OPTION, ACCEPT_OPTION, REJECT_OPTION = map(str, range(9, 14))
+
+# State definitions for acknowledging payments
+
+
+# State definitions for showing
+SHOW_ORDERS_BOUGHT, SHOW_ORDERS_PAID, ADDING_OPTION = map(str, range(3, 6))
+
 
 #Shortcut for ConversationHandler.END
 END = ConversationHandler.END
@@ -50,7 +59,7 @@ END = ConversationHandler.END
 (
     START_OVER,
     CURRENT_LEVEL,
-) = map(chr, range(7, 9))
+) = map(chr, range(8, 10))
 
 
 #######################
@@ -178,7 +187,10 @@ def create_new_order(update: Update, context: CallbackContext) -> str:
     new_order_id = database["Orders"].size()
     database["Orders"][new_order_id] = ()
 
-    return TYPING
+    return ADDING_OPTION
+
+def save_order(update: Update, context: CallbackContext) -> str:
+    pass
 
 ########
 # MAIN #
@@ -194,7 +206,7 @@ def main():
             CallbackQueryHandler(create_new_order, pattern = '^' + str(CREATING_ORDER) + '$')
         ],
         states = {
-            TYPING: [MessageHandler(Filters.text & ~Filters.command, save_order)],
+            ADDING_OPTION: [MessageHandler(Filters.text & ~Filters.command, save_order)],
 
         },
         fallbacks = [
