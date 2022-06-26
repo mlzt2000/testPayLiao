@@ -260,7 +260,7 @@ def create_new_order(update: Update, context: CallbackContext) -> str:
     new_order_id = database["Orders"].size()
     database["Orders"][new_order_id] = ()
 
-    return ADDING_OPTION
+    return NAME_ORDER
 
 def save_order(update: Update, context: CallbackContext) -> str:
     pass
@@ -270,37 +270,37 @@ def save_order(update: Update, context: CallbackContext) -> str:
 ########
 
 def main():
-    updater = Updater("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA")
+    updater = Updater("5376242962:AAGxLOy-Yd8MMYvoxBft_7wULmL-GB2eFcM")
     dispatcher = updater.dispatcher
 
     # Second level ConversationHandler (creating order)
-    create_order_handler = ConversationHandler(
-        entry_points = [
-            CallbackQueryHandler(create_new_order, pattern = '^' + str(CREATING_ORDER) + '$')
-        ],
-        states = {
-            ADDING_OPTION: [MessageHandler(Filters.text & ~Filters.command, save_order)],
+    # create_order_handler = ConversationHandler(
+    #     entry_points = [
+    #         CallbackQueryHandler(create_new_order, pattern = '^' + str(NAME_ORDER) + '$')
+    #     ],
+    #     states = {
+    #         ADDING_OPTION: [MessageHandler(Filters.text & ~Filters.command, save_order)],
 
-        },
-        fallbacks = [
+    #     },
+    #     fallbacks = [
 
-        ],
-        map_to_parent = {
-            SHOWING: SHOWING,
-            STOPPING: END,
-        }
-    )
+    #     ],
+    #     map_to_parent = {
+    #         SHOW_ALL: SHOWING,
+    #         STOPPING: END,
+    #     }
+    # )
 
     # Top level ConversationHandler (selecting action)
     selection_handlers = [
         # _handler,
         CallbackQueryHandler(
             show_all_orders, 
-            pattern = "^" + str(SHOWING_ALL_ORDERS) + "$"
+            pattern = "^" + str(SHOW_ALL) + "$"
         ),
         CallbackQueryHandler(
             create_new_order,
-            pattern = "^" + str(CREATING_ORDER) + "$"
+            pattern = "^" + str(NAME_ORDER) + "$"
         ),
         CallbackQueryHandler(
             end,
@@ -313,10 +313,10 @@ def main():
             CommandHandler("start", start)
         ],
         states = {
-            SHOWING: [CallbackQueryHandler(start, pattern='^' + str(END) + '$')],
+            SHOW_ALL: [CallbackQueryHandler(start, pattern='^' + str(END) + '$')],
             SELECTING_ACTION: selection_handlers,
-            CREATING_ORDER: selection_handlers,
-            STOPPING: [CommandHandler('start', start)]
+            NAME_ORDER: selection_handlers,
+            END: [CommandHandler('start', start)]
         },
         fallbacks = [
             CommandHandler('stop', stop)
