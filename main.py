@@ -1,6 +1,7 @@
 from ast import Call
 import logging 
 from typing import Dict, List, Tuple, Any
+import sqlite3
 from telegram import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.ext import (
     Updater,
@@ -18,6 +19,32 @@ logging.basicConfig(
     level=logging.INFO
 
 )
+
+# initialise database
+conn = sqlite3.connect("payliaodb.db")
+
+curr = conn.cursor()
+
+db_cmds = """ 
+CREATE TABLE Orders (
+    id INTEGER PRIMARY KEY,
+    payer_id INTEGER NOT NULL,
+    chat_id INTEGER,
+    datetime_created DATETIME NOT NULL,
+    descr TEXT,
+    closed BOOLEAN NOT NULL DEFAULT FALSE
+);
+
+CREATE TABLE Options (
+    id INTEGER PRIMARY KEY,
+    order_id INTEGER NOT NULL REFERENCES Orders(id) ON DELETE CASCADE,
+    payee_id INTEGER NOT NULL,
+    cost FLOAT NOT NULL,
+    descr TEXT NOT NULL,
+    paid BOOLEAN DEFAULT NULL,
+    acknowledged BOOLEAN NOT NULL DEFAULT FALSE
+);
+"""
 
 # stand-in for a SQL database in the form of Dict[table_name: str, table: Table]
 # see database.sql file for actual sql tables
