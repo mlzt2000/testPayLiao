@@ -376,7 +376,7 @@ def end(update: Update, context: CallbackContext) -> int:
 ########
 
 def main():
-    updater = Updater("5376242962:AAGxLOy-Yd8MMYvoxBft_7wULmL-GB2eFcM")
+    updater = Updater("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA")
     dispatcher = updater.dispatcher
 
     # Second level ConversationHandler (creating order)
