@@ -59,9 +59,9 @@ create_cmd = """
 CREATE TABLE IF NOT EXISTS Options (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     order_id INTEGER NOT NULL REFERENCES Orders(id) ON DELETE CASCADE,
-    payee_id INTEGER NOT NULL,
-    cost FLOAT NOT NULL,
-    descr TEXT NOT NULL,
+    payee_username TEXT NOT NULL,
+    descr FLOAT NOT NULL,
+    cost TEXT NOT NULL,
     paid BOOLEAN NOT NULL DEFAULT FALSE,
     acknowledged BOOLEAN NOT NULL DEFAULT FALSE
 );
@@ -289,7 +289,7 @@ def select_open(update: Update, context: CallbackContext) -> str:
     orders = curr.fetchall()
 
     for order in orders:
-        text += str(order) + "\n"
+        text += "Order:\n" + str(order) + "\n\n"
 
     update.callback_query.answer()
     update.callback_query.edit_message_text(text = text)
@@ -299,6 +299,7 @@ def select_open(update: Update, context: CallbackContext) -> str:
 def ask_for_option(update: Update, context: CallbackContext) -> str:
     ## TODO check for appropriate order!
     order = int(update.message.text)
+    print(order)
     context.user_data[ORDER] = order
     buttons = [
         [
@@ -363,17 +364,18 @@ def confirm_option(update:Update, context:CallbackContext) -> str:
     username = update.message.from_user.username
     user_data = context.user_data
     user_data[OPTION_INFO] = (user_data[DESCRIPTION], user_data[COST])
-    text = f"@{username}, create order {msg}?"
+    order = user_data[ORDER]
+    text = f"@{username}, add option {msg} to order {order}?"
 
     buttons = [
         [
             InlineKeyboardButton(
                 text = "Yes",
-                callback_data = str(ACCEPT_NAME)
+                callback_data = str(ACCEPT_OPTION)
             ),
             InlineKeyboardButton(
-                text = "Change name",
-                callback_data = str(NAME_ORDER)
+                text = "Edit option",
+                callback_data = str(ADD_INFO)
             )
         ],
         [
@@ -390,7 +392,39 @@ def confirm_option(update:Update, context:CallbackContext) -> str:
         reply_markup = keyboard
     )
 
-    return CONFIRM_NAME
+    return CONFIRM_OPTION
+
+def accept_option(update: Update, context: CallbackContext) -> str:
+    order_id = context.user_data[ORDER]
+    opt_desc = context.user_data[DESCRIPTION]
+    opt_cost = context.user_data[COST]
+    
+    ## Create an empty order in the database
+    insert_new_option_cmd = f"""
+    INSERT INTO Options(order_id, )
+    VALUES ('{new_order[0]}', '{new_order[1]}')
+    """
+    curr.execute(insert_new_order_cmd)
+    conn.commit()
+
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text = "Done",
+                callback_data = SELECTING_ACTION
+            )
+        ]
+    ]
+
+    keyboard = InlineKeyboardMarkup(buttons)
+
+    update.callback_query.answer()
+    update.callback_query.edit_message_text(
+        text = text,
+        reply_markup = keyboard
+    )
+
+    return ACCEPT_NAME
 
 ###########################
 # PROVIDE PROOF FUNCTIONS #
@@ -482,29 +516,44 @@ def end(update: Update, context: CallbackContext) -> int:
 
     return END
 
+########################
+# ADDITIONAL FUNCTIONS #
+########################
+
+def stop_nested(update: Update, context: CallbackContext) -> str:
+    update.message.reply_text('Okay, bye.')
+    return STOPPING
 
 ########
 # MAIN #
 ########
 
 def main():
-    updater = Updater("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA"): 
+    updater = Updater("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA") 
     dispatcher = updater.dispatcher
 
     # Second level ConversationHandler (add option)
+    confirm_option_handlers = [
+        CallbackQueryHandler(accept_option, pattern = '^' + str(ACCEPT_OPTION) + '$'),
+        CallbackQueryHandler(ask_for_option_info, pattern = '^' + str(ADD_INFO))
+    ]
+    
     add_option_handler = ConversationHandler(
         entry_points = [
             CallbackQueryHandler(select_open, pattern = '^' + str(SHOW_OPEN) + '$')
         ],
         states = {
-            SHOW_OPEN: [MessageHandler(Filters.text & ~Filters.command, ask_for_option)]
-            ADD_INFO: 
+            SHOW_OPEN: [MessageHandler(Filters.text & ~Filters.command, ask_for_option)],
+            CONFIRM_OPTION: confirm_option_handlers
         },
         fallbacks = [
-
+            CallbackQueryHandler(end_create_order, pattern = '^' + str(SELECTING_ACTION) + '$'),
+            CommandHandler('stop', stop_nested)
         ],
         map_to_parent = {
-
+            END: SELECTING_ACTION,
+            SELECTING_ACTION: SELECTING_ACTION,
+            STOPPING: STOPPING
         }
     )
 
