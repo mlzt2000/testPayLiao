@@ -119,6 +119,9 @@ SELECT_UNPAID_OPTION, PROVIDE_PROOF, CONFIRM_PROOF = map(str, range(21, 24))
 # State definitions for showing
 SHOW_PAYEE, SHOW_PAYEE_UNPAID, SHOW_ALL_UNPAID, SHOW_PAYER, SHOW_PAYER_UNPAID = map(str, range(25, 30))
 
+# Meta states
+STOPPING = str(30)
+
 #Shortcut for ConversationHandler.END
 END = ConversationHandler.END
 
@@ -126,7 +129,9 @@ END = ConversationHandler.END
 (
     START_OVER,
     CURRENT_LEVEL,
-) = map(chr, range(30, 32))
+    DESCRIPTION,
+    COST,
+) = map(chr, range(31, 33))
 
 
 #######################
@@ -141,16 +146,31 @@ def start(update: Update, context: CallbackContext) -> str:
     
     buttons = [
         [
+            
+            InlineKeyboardButton(
+                text = 'Create new order',
+                callback_data = str(NAME_ORDER)
+            ),
+            InlineKeyboardButton(
+                text = "Close Order",
+                callback_data = str(SHOW_OPEN_SELF_PAYER)
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text = "Add to order",
+                callback_data = str(SHOW_OPEN)
+            ),
+            InlineKeyboardButton(
+                text = "Provide proof",
+                callback_data = str(SHOW_UNPAID_SELF_PAYEE)
+            )
+        ],
+        [
             InlineKeyboardButton(
                 text = 'View existing orders',
                 callback_data = str(SHOW_ALL)
             ),
-            InlineKeyboardButton(
-                text = 'Create new order',
-                callback_data = str(NAME_ORDER)
-            )
-        ],
-        [
             InlineKeyboardButton(
                 text = 'Done',
                 callback_data = str(END)
@@ -177,8 +197,57 @@ def start(update: Update, context: CallbackContext) -> str:
     context.user_data[START_OVER] = False
     return SELECTING_ACTION
 
+##########################
+# CREATE ORDER FUNCTIONS #
+##########################
+
+def create_new_order(update: Update, context: CallbackContext) -> str:
+    ## Answering the user
+    text = "Name this order."
+    update.callback_query.answer()
+    update.callback_query.edit_message_text(text=text)
+
+    ## Create an empty order in the database
+    new_order_id = database["Orders"].size()
+    database["Orders"][new_order_id] = ()
+
+    return NAME_ORDER
+
+def confirm_name(update: Update, context: CallbackContext) -> str:
+    return CONFIRM_NAME
+
+#########################
+# CLOSE ORDER FUNCTIONS #
+#########################
+
+def select_closable(update: Update, context: CallbackContext) -> str:
+    return SHOW_OPEN_SELF_PAYER
+
+def confirm_close(update: Update, context: CallbackContext) -> str:
+    return CONFIRM_CLOSURE
+
+def accept_close(update: Update, context: CallbackContext) -> str:
+    return ACCEPT_CLOSURE
+
+##########################
+# ADD TO ORDER FUNCTIONS #
+##########################
+
+def select_open(update: Update, context: CallbackContext) -> str:
+    return SHOW_OPEN
+
+###########################
+# PROVIDE PROOF FUNCTIONS #
+###########################
+
+def select_unpaid(update: Update, context: CallbackContext) -> str:
+    return SHOW_UNPAID_SELF_PAYEE
+
+#############################
+# SHOW ALL ORDERS FUNCTIONS #
+#############################
+
 def show_all_orders(update: Update, context = CallbackContext) -> str:
-    # chat_id = update.message.chat.id
     all_orders = list(database['Orders'].items())
     all_orders.sort(key = lambda x: x[0]) # should sort by chronological order, for now is sorted by id
     out = [order_to_string(order_id, order) for order_id, order in all_orders]
@@ -246,61 +315,54 @@ def end(update: Update, context: CallbackContext) -> int:
 
     return END
 
-##########################
-# SECOND LEVEL FUNCTIONS #
-##########################
-
-def create_new_order(update: Update, context: CallbackContext) -> str:
-    ## Answering the user
-    text = "Name this order."
-    update.callback_query.answer()
-    update.callback_query.edit_message_text(text=text)
-
-    ## Create an empty order in the database
-    new_order_id = database["Orders"].size()
-    database["Orders"][new_order_id] = ()
-
-    return NAME_ORDER
-
-def save_order(update: Update, context: CallbackContext) -> str:
-    pass
 
 ########
 # MAIN #
 ########
 
 def main():
-    updater = Updater("5376242962:AAGxLOy-Yd8MMYvoxBft_7wULmL-GB2eFcM")
+    updater = Updater("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA")
     dispatcher = updater.dispatcher
 
     # Second level ConversationHandler (creating order)
-    # create_order_handler = ConversationHandler(
-    #     entry_points = [
-    #         CallbackQueryHandler(create_new_order, pattern = '^' + str(NAME_ORDER) + '$')
-    #     ],
-    #     states = {
-    #         ADDING_OPTION: [MessageHandler(Filters.text & ~Filters.command, save_order)],
-
-    #     },
-    #     fallbacks = [
-
-    #     ],
-    #     map_to_parent = {
-    #         SHOW_ALL: SHOWING,
-    #         STOPPING: END,
-    #     }
-    # )
+    create_order_handler = ConversationHandler(
+        entry_points = [
+            CallbackQueryHandler(create_new_order, pattern = '^' + str(NAME_ORDER) + '$')
+        ],
+        states = {
+            NAME_ORDER: [MessageHandler(Filters.text & ~Filters.command, confirm_name)],
+        },
+        fallbacks = [
+            CommandHandler('stop', stop)
+        ],
+        map_to_parent = {
+            SHOW_ALL: SHOW_ALL,
+            STOPPING: STOPPING,
+        }
+    )
 
     # Top level ConversationHandler (selecting action)
     selection_handlers = [
         # _handler,
         CallbackQueryHandler(
-            show_all_orders, 
-            pattern = "^" + str(SHOW_ALL) + "$"
-        ),
-        CallbackQueryHandler(
             create_new_order,
             pattern = "^" + str(NAME_ORDER) + "$"
+        ),
+        CallbackQueryHandler(
+            select_closable,
+            pattern = "^" + str(SHOW_OPEN_SELF_PAYER)
+        ),
+        CallbackQueryHandler(
+            select_open,
+            pattern = "^" + str(SHOW_OPEN)
+        ),
+        CallbackQueryHandler(
+            select_unpaid,
+            pattern = "^" + str(SHOW_UNPAID_SELF_PAYEE)
+        ),
+        CallbackQueryHandler(
+            show_all_orders, 
+            pattern = "^" + str(SHOW_ALL) + "$"
         ),
         CallbackQueryHandler(
             end,
@@ -316,7 +378,7 @@ def main():
             SHOW_ALL: [CallbackQueryHandler(start, pattern='^' + str(END) + '$')],
             SELECTING_ACTION: selection_handlers,
             NAME_ORDER: selection_handlers,
-            END: [CommandHandler('start', start)]
+            STOPPING: [CommandHandler('start', start)]
         },
         fallbacks = [
             CommandHandler('stop', stop)
