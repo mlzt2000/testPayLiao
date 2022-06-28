@@ -1,8 +1,6 @@
-from ast import Call
 from asyncio.log import logger
 import logging 
 from typing import Dict, List, Tuple, Any
-import datetime
 import sqlite3
 from telegram import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Update
 from telegram.ext import (
