@@ -110,7 +110,8 @@ END = ConversationHandler.END
     OPTION_INFO,
     ORDER,
     OPTION,
-) = map(chr, range(32, 39))
+    USERNAME
+) = map(chr, range(32, 40))
 
 
 #######################
@@ -260,6 +261,13 @@ def end_create_order(update: Update, context: CallbackContext) -> str:
     start(update, context)
     return SELECTING_ACTION
 
+def order_to_string(order) -> str:
+    order_id, username, date_time, descr, is_closed = order
+    return f"Order {order_id}: {descr} created by @{username} on {str(date_time)}. (Closed: {'Yes' if is_closed else 'No'})"
+
+def option_to_string(option) -> str:
+    option_id, order_id, username, descr, cost, paid, acknowledged = option
+    return f"Option {option_id}: @{username} bought {descr} for {cost}. (Paid: {'Yes' if paid else 'No'}) (Acknowledged: {'Yes' if acknowledged else 'No'})"
 
 #########################
 # CLOSE ORDER FUNCTIONS #
@@ -289,7 +297,7 @@ def select_open(update: Update, context: CallbackContext) -> str:
     orders = curr.fetchall()
 
     for order in orders:
-        text += "Order:\n" + str(order) + "\n\n"
+        text += order_to_string(order) + "\n"
 
     update.callback_query.answer()
     update.callback_query.edit_message_text(text = text)
@@ -298,9 +306,11 @@ def select_open(update: Update, context: CallbackContext) -> str:
 
 def ask_for_option(update: Update, context: CallbackContext) -> str:
     ## TODO check for appropriate order!
-    order = int(update.message.text)
-    print(order)
-    context.user_data[ORDER] = order
+    if not context.user_data.get(START_OVER):
+        order_id = int(update.message.text)
+        context.user_data[ORDER] = order_id
+    else:
+        order_id = context.user_data[ORDER]
     buttons = [
         [
             InlineKeyboardButton(
@@ -315,7 +325,7 @@ def ask_for_option(update: Update, context: CallbackContext) -> str:
         [
             InlineKeyboardButton(
                 text = "Cancel",
-                callback_data = str(SHOW_OPEN)
+                callback_data = str(SELECTING_ACTION)
             ),
             InlineKeyboardButton(
                 text = "Done",
@@ -326,12 +336,54 @@ def ask_for_option(update: Update, context: CallbackContext) -> str:
 
     keyboard = InlineKeyboardMarkup(buttons)
 
-    text = "Please add info to your new option."
+    text = "Please add or change details of new option."
     if not context.user_data.get(START_OVER):
-        context.user_data[DESCRIPTION] = "Please update description."
-        context.user_data[COST] = "Please update cost."
-    descr = context.user_data.get(DESCRIPTION)
-    cost = context.user_data.get(COST)
+        context.user_data[OPTION_INFO] = {
+            DESCRIPTION: "Please update description.",
+            COST: "Please update cost.",
+            USERNAME: update.message.from_user.username 
+        }
+    descr = context.user_data[OPTION_INFO][DESCRIPTION]
+    cost = context.user_data[OPTION_INFO][COST]
+    text = f"{text}\nDescription: {descr}\nCost: {cost}"
+
+    update.message.reply_text(
+        text = text,
+        reply_markup = keyboard
+    )
+
+    return SELECT_INFO
+
+def edit_option(update: Update, context: CallbackContext) -> str:
+    order_id = context.user_data[ORDER]
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text = "Description",
+                callback_data = str(DESCRIPTION)
+            ),
+            InlineKeyboardButton(
+                text = "Cost",
+                callback_data = str(COST)
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text = "Cancel",
+                callback_data = str(SELECTING_ACTION)
+            ),
+            InlineKeyboardButton(
+                text = "Done",
+                callback_data = str(CONFIRM_OPTION)
+            )
+        ]
+    ]
+
+    keyboard = InlineKeyboardMarkup(buttons)
+
+    text = "Please add or change details of new option."
+    descr = context.user_data[OPTION_INFO][DESCRIPTION]
+    cost = context.user_data[OPTION_INFO][COST]
     text = f"{text}\nDescription: {descr}\nCost: {cost}"
 
     update.callback_query.answer()
@@ -344,7 +396,7 @@ def ask_for_option(update: Update, context: CallbackContext) -> str:
 
 def ask_for_option_info(update: Update, context: CallbackContext) -> str:
     context.user_data[CURR_INFO] = update.callback_query.data
-    text = "Okay, tell me."
+    text = "Add option info."
 
     update.callback_query.answer()
     update.callback_query.edit_message_text(text=text)
@@ -359,13 +411,13 @@ def save_option_info(update: Update, context: CallbackContext) -> str:
     return ask_for_option(update, context)
 
 def confirm_option(update:Update, context:CallbackContext) -> str:
-    msg = update.message.text
-    logger.info(msg)
-    username = update.message.from_user.username
     user_data = context.user_data
-    user_data[OPTION_INFO] = (user_data[DESCRIPTION], user_data[COST])
-    order = user_data[ORDER]
-    text = f"@{username}, add option {msg} to order {order}?"
+    order_id = user_data[ORDER]
+    opt_descr = user_data[OPTION_INFO][DESCRIPTION]
+    opt_cost = user_data[OPTION_INFO][COST]
+    username = user_data[OPTION_INFO][USERNAME]
+    user_data[OPTION_INFO][ORDER] = order_id
+    text = f"@{username}, add option {opt_descr} for {opt_cost} to order {order_id}?"
 
     buttons = [
         [
@@ -387,7 +439,8 @@ def confirm_option(update:Update, context:CallbackContext) -> str:
     ]
 
     keyboard = InlineKeyboardMarkup(buttons)
-    update.message.reply_text(
+    update.callback_query.answer()
+    update.callback_query.edit_message_text(
         text = text,
         reply_markup = keyboard
     )
@@ -395,17 +448,20 @@ def confirm_option(update:Update, context:CallbackContext) -> str:
     return CONFIRM_OPTION
 
 def accept_option(update: Update, context: CallbackContext) -> str:
-    order_id = context.user_data[ORDER]
-    opt_desc = context.user_data[DESCRIPTION]
-    opt_cost = context.user_data[COST]
-    
+    order_id = context.user_data[OPTION_INFO][ORDER]
+    username = context.user_data[OPTION_INFO][USERNAME]
+    opt_descr = context.user_data[OPTION_INFO][DESCRIPTION]
+    opt_cost = context.user_data[OPTION_INFO][COST]
+
     ## Create an empty order in the database
     insert_new_option_cmd = f"""
-    INSERT INTO Options(order_id, )
-    VALUES ('{new_order[0]}', '{new_order[1]}')
+    INSERT INTO Options(order_id, payee_username, descr, cost)
+    VALUES ('{order_id}', '{username}', '{opt_descr}', {opt_cost})
     """
-    curr.execute(insert_new_order_cmd)
+    curr.execute(insert_new_option_cmd)
     conn.commit()
+
+    text = f"@{username} added {opt_descr} for {opt_cost} to order {order_id}"
 
     buttons = [
         [
@@ -424,7 +480,12 @@ def accept_option(update: Update, context: CallbackContext) -> str:
         reply_markup = keyboard
     )
 
-    return ACCEPT_NAME
+    return ACCEPT_OPTION
+
+def end_add_option(update: Update, context: CallbackContext) -> str:
+    context.user_data[START_OVER] = True
+    start(update, context)
+    return SELECTING_ACTION
 
 ###########################
 # PROVIDE PROOF FUNCTIONS #
@@ -458,9 +519,9 @@ def show_all_orders(update: Update, context = CallbackContext) -> str:
         """
         curr.execute(fetch_options_cmd)
         options = curr.fetchall()
-        text += "Order: " + str(order) + "\n"
+        text += order_to_string(order) + "\n"
         for option in options:
-            text += str(option) + "\n"
+            text += option_to_string(option) + "\n"
         text += "\n"
     
     buttons = [
@@ -504,6 +565,7 @@ def help(update: Update, context: CallbackContext) -> None:
 def stop(update: Update, context: CallbackContext) -> int:
     """End Conversation by command."""
     update.message.reply_text('Okay, bye.')
+    context.user_data[START_OVER] = False
 
     return END
 
@@ -529,13 +591,19 @@ def stop_nested(update: Update, context: CallbackContext) -> str:
 ########
 
 def main():
-    updater = Updater("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA") 
+    updater = Updater("5376242962:AAGxLOy-Yd8MMYvoxBft_7wULmL-GB2eFcM") 
     dispatcher = updater.dispatcher
 
     # Second level ConversationHandler (add option)
+    select_info_handlers = [
+        CallbackQueryHandler(ask_for_option_info, pattern = f'^{DESCRIPTION}$|^{COST}$'),
+        CallbackQueryHandler(end_add_option, pattern = '^' + SELECTING_ACTION + '$'),
+        CallbackQueryHandler(confirm_option, pattern = '^' + CONFIRM_OPTION + '$'),
+    ]
+
     confirm_option_handlers = [
         CallbackQueryHandler(accept_option, pattern = '^' + str(ACCEPT_OPTION) + '$'),
-        CallbackQueryHandler(ask_for_option_info, pattern = '^' + str(ADD_INFO))
+        CallbackQueryHandler(edit_option, pattern = '^' + str(ADD_INFO) + '$')
     ]
     
     add_option_handler = ConversationHandler(
@@ -544,10 +612,13 @@ def main():
         ],
         states = {
             SHOW_OPEN: [MessageHandler(Filters.text & ~Filters.command, ask_for_option)],
-            CONFIRM_OPTION: confirm_option_handlers
+            SELECT_INFO: select_info_handlers,
+            ADD_INFO: [MessageHandler(Filters.text & ~Filters.command, save_option_info)],
+            CONFIRM_OPTION: confirm_option_handlers,
+            ACCEPT_OPTION: [CallbackQueryHandler(end_add_option, pattern = '^' + str(SELECTING_ACTION) + '$')]
         },
         fallbacks = [
-            CallbackQueryHandler(end_create_order, pattern = '^' + str(SELECTING_ACTION) + '$'),
+            CallbackQueryHandler(end_add_option, pattern = '^' + str(SELECTING_ACTION) + '$'),
             CommandHandler('stop', stop_nested)
         ],
         map_to_parent = {
@@ -569,7 +640,8 @@ def main():
         ],
         states = {
             NAME_ORDER: [MessageHandler(Filters.text & ~Filters.command, confirm_name)],
-            CONFIRM_NAME: confirm_name_handlers
+            CONFIRM_NAME: confirm_name_handlers,
+            ACCEPT_NAME: [CallbackQueryHandler(end_create_order, pattern = '^' + str(SELECTING_ACTION) + '$')]
         },
         fallbacks = [
             CallbackQueryHandler(end_create_order, pattern = '^' + str(SELECTING_ACTION) + '$'),
@@ -586,13 +658,10 @@ def main():
 
     selection_handlers = [
         create_order_handler,
+        add_option_handler,
         CallbackQueryHandler(
             select_closable,
             pattern = "^" + str(SHOW_OPEN_SELF_PAYER)
-        ),
-        CallbackQueryHandler(
-            select_open,
-            pattern = "^" + str(SHOW_OPEN)
         ),
         CallbackQueryHandler(
             select_unpaid,
