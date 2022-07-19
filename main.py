@@ -1,8 +1,8 @@
 from dataclasses import dataclass
 import logging 
-from typing import Dict, List, Tuple, Any 
+from typing import Dict, List, Tuple, Any
 import sqlite3
-from telegram import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Update
+from telegram import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, Update, Bot
 from telegram.ext import (
     Updater,
     CommandHandler,
@@ -32,15 +32,15 @@ conn = sqlite3.connect(
 
 curr = conn.cursor()
 
-# reset_cmd = """
-# DROP TABLE IF EXISTS Orders;
-# """
-# curr.execute(reset_cmd)
+reset_cmd = """
+DROP TABLE IF EXISTS Checklists;
+"""
+curr.execute(reset_cmd)
 
-# reset_cmd = """
-# DROP TABLE IF EXISTS Options
-# """
-# curr.execute(reset_cmd)
+reset_cmd = """
+DROP TABLE IF EXISTS Requests;
+"""
+curr.execute(reset_cmd)
 
 create_checklists_cmd = """
 CREATE TABLE IF NOT EXISTS Checklists (
@@ -56,10 +56,10 @@ curr.execute(create_checklists_cmd)
 create_requests_cmd = """
 CREATE TABLE IF NOT EXISTS Requests (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    order_id INTEGER NOT NULL REFERENCES Orders(id) ON DELETE CASCADE,
+    checklist_id INTEGER NOT NULL REFERENCES Orders(id) ON DELETE CASCADE,
     debtor_username TEXT NOT NULL REFERENCES Users(username) ON UPDATE CASCADE,
-    descr FLOAT NOT NULL,
-    cost TEXT NOT NULL,
+    descr TEXT NOT NULL,
+    cost FLOAT NOT NULL,
     paid BOOLEAN NOT NULL DEFAULT FALSE,
     acknowledged BOOLEAN NOT NULL DEFAULT FALSE
 );
@@ -80,28 +80,36 @@ conn.commit()
 #############################
 
 # TOP LEVEL CONSTANTS
-SELECTING_ACTION, NAME_CHECKLIST, SELECT_CHECKLIST = map(str, range(3))
+SELECTING_ACTION, NAME_CHECKLIST, VIEW_CHECKLISTS = map(str, range(3))
 
 # CREATE CHECKLIST CONSTANTS
-CONFIRM_NAME, ACCEPT_NAME = map(str, range(3, 5)) 
+CONFIRM_NAME_CHECKLIST, ACCEPT_NAME_CHECKLIST = map(str, range(3, 5)) 
 
 # MANAGE CHECKLIST CONSTANTS
-ADD_REQUEST = map(str, range(5, 6))
+MANAGE_CHECKLIST, SELECT_INFO_REQUEST, ASK_FOR_INFO_REQUEST, CONFIRM_REQUEST, ACCEPT_REQUEST, EDIT_DEL_REQUESTS = map(str, range(5, 11))
+
+# REMINDER CONSTANTS
+SEND_REMINDERS, SEND_REMINDER, PAID = map(str, range(11, 13))
 
 # META STATES
-STOPPING = map(str, range(6, 7))
+STOPPING = map(str, range(13, 14))
 
 # ConversationHandler.END
 END = ConversationHandler.END
 
 # CONSTANTS
 (
-    IS_NEW_USE,
+    START_OVER,
     TEMP_STORE,
     CHECKLIST,
+    REQUEST,
+    INFOTYPE,
+    ID,
     NAME,
     USERNAME,
-) = map(str, range(7, 12))
+    DESCRIPTION,
+    COST,
+) = map(str, range(14, 24))
 
 #########################
 # GENERAL USE FUNCTIONS #
@@ -120,9 +128,10 @@ def get_text(update: Update) -> str:
     message = update.message
     if message == None:
         return None
-    if message[0] == "@":
-        message = message[1:]
-    return message.text
+    text = message.text
+    if text[0] == "@":
+        text = text[1:]
+    return text
 
 class Store:
     """this is a glorified tree with a dictionary instead of a list of children"""
@@ -147,7 +156,7 @@ class Store:
             return self.data
         label = labels.pop(0)
         if label not in self.children.keys():
-            return -1
+            return None
         return self.children[label].retrieve_data(labels)
     
     def clear_data(self, labels):
@@ -176,6 +185,8 @@ def store_temp_data(context: CallbackContext, data: Any, labels: Tuple[str, ...]
         return -1
 
 def get_temp_data(context: CallbackContext, labels: Tuple[str, ...]) -> Any:
+    if TEMP_STORE not in context.user_data.keys():
+        context.user_data[TEMP_STORE] = Store()
     temp_store = context.user_data[TEMP_STORE]
     return temp_store.retrieve_data(labels)
 
@@ -191,15 +202,25 @@ def clear_temp_data(context: CallbackContext, labels: Tuple[str, ...] = ()) -> i
 # TOP LEVEL FUNCTIONS #
 #######################
 
-def start(update: Update, context: CallbackContext) -> str:
+def selecting_action(update: Update, context: CallbackContext) -> str:
     """Main Menu for the bot, gives access to all other functions"""
     welcome_text = "Hello, and thank you for using PayLiaoBot!" # TODO: ADD PRIVACY DECLARATIONS
-    text = "Create a checklist by clicking the 'Create Checklist' below."
+    text = "Button Guide:\nCreate Checklist: Make a list of money that people owe you.\nManage Checlists: View all Checklists that you have created, and edit them."
     buttons = [
         [
             InlineKeyboardButton(
                 text = 'Create Checklist',
                 callback_data = str(NAME_CHECKLIST)
+            ),
+            InlineKeyboardButton(
+                text = "Manage Checklists",
+                callback_data = str(VIEW_CHECKLISTS)
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text = "Done",
+                callback_data = str(END)
             )
         ]
     ]
@@ -207,12 +228,13 @@ def start(update: Update, context: CallbackContext) -> str:
     keyboard = InlineKeyboardMarkup(buttons)
     
     """Only print welcome_text if it is the first time in the main menu after starting the bot."""
-    if not context.user_data.get(IS_NEW_USE):
+    if not get_temp_data(context, [SELECTING_ACTION, START_OVER]):
         update.message.reply_text(welcome_text)
         update.message.reply_text(
             text = text,
             reply_markup = keyboard
         )
+        store_temp_data(context, True, [SELECTING_ACTION, START_OVER])
     else:
         """using callback_query.answer() means that coming back to start menu must be from InlineKeyboardButton"""
         update.callback_query.answer()
@@ -220,9 +242,6 @@ def start(update: Update, context: CallbackContext) -> str:
             text = text,
             reply_markup = keyboard
         )
-    
-    """START_OVER is shared """
-    context.user_data[IS_NEW_USE] = False
     return SELECTING_ACTION
 
 def help(update: Update, context: CallbackContext) -> None:
@@ -232,18 +251,19 @@ def stop(update: Update, context: CallbackContext) -> int:
     """End Conversation by command. Clears all user_data for a hard reset"""
     update.message.reply_text('Okay, bye.')
     clear_temp_data(context)
-
     return END
 
 def end(update: Update, context: CallbackContext) -> int:
     """End conversation from InlineKeyboardButton. Clears all user_data for a hard reset"""
     update.callback_query.answer()
     clear_temp_data(context)
-
     text = 'See you around!'
     update.callback_query.edit_message_text(text=text)
-
     return END
+
+def stop_nested(update: Update, context: CallbackContext) -> str:
+    update.message.reply_text("Okay, bye.")
+    return STOPPING
 
 ##############################
 # CREATE CHECKLIST FUNCTIONS #
@@ -251,16 +271,15 @@ def end(update: Update, context: CallbackContext) -> int:
 
 def name_checklist(update: Update, context: CallbackContext) -> str:
     """starts the process of creating a Checklist by asking user for a name for the Checklist"""
-
     buttons = [
         [
             InlineKeyboardButton(
                 text = "Cancel",
-                callback_data = str(SELECTING_ACTION)
+                callback_data = str(END)
             ),
             InlineKeyboardButton(
                 text = "No name",
-                callback_data = str(CONFIRM_NAME)
+                callback_data = str(CONFIRM_NAME_CHECKLIST)
             )
         ]
     ]
@@ -288,7 +307,7 @@ def confirm_name_checklist(update: Update, context: CallbackContext) -> str:
         [
             InlineKeyboardButton(
                 text = "Yes",
-                callback_data = str(ACCEPT_NAME)
+                callback_data = str(ACCEPT_NAME_CHECKLIST)
             ),
             InlineKeyboardButton(
                 text = 'No',
@@ -298,7 +317,7 @@ def confirm_name_checklist(update: Update, context: CallbackContext) -> str:
         [
             InlineKeyboardButton(
                 text = "Cancel",
-                callback_data = str(SELECTING_ACTION)
+                callback_data = str(END)
             )
         ]
     ]
@@ -322,7 +341,7 @@ def confirm_name_checklist(update: Update, context: CallbackContext) -> str:
             reply_markup = keyboard
         )
 
-    return CONFIRM_NAME
+    return CONFIRM_NAME_CHECKLIST
 
 def accept_name_checklist(update: Update, context: CallbackContext) -> str:
     """if name is accepted, store Checklist in database"""
@@ -339,12 +358,18 @@ def accept_name_checklist(update: Update, context: CallbackContext) -> str:
     buttons = [
         [
             InlineKeyboardButton(
-                text = "Add Requests",
-                callback_data = str(ADD_INFO_REQUEST)
+                text = "Add requests",
+                callback_data = str(ASK_FOR_INFO_REQUEST)
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text = "Create new",
+                callback_data = str(NAME_CHECKLIST)
             ),
             InlineKeyboardButton(
                 text = 'Back to start',
-                callback_data = str(SELECTING_ACTION)
+                callback_data = str(END)
             )
         ]
     ]
@@ -354,14 +379,18 @@ def accept_name_checklist(update: Update, context: CallbackContext) -> str:
         printable_name = ""
     else:
         printable_name = " " + checklist_name
-    text = f"Checklist{printable_name} created.\n\nButton Guide\nAdd Requests: Add payments owed to you to this checklist.\nBack to start: Return to start menu."
+    text = f"Checklist{printable_name} created."
+    text += "\n\nButton Guide"
+    text += "\nAdd Requests: Add payments owed to you to this checklist."
+    text += "\nCreate new: Make a new checklist."
+    text += "\nBack to start: Return to start menu."
     update.callback_query.answer()
     update.callback_query.edit_message_text(
         text = text,
         reply_markup = keyboard
     )
     
-    return ACCEPT_NAME
+    return ACCEPT_NAME_CHECKLIST
 
 def db_insert_checklist(payer_username: str, descr: str) -> int:
     """Inserting checklist data into Checklists table in Database, returns the id of the checklist"""
@@ -371,41 +400,134 @@ def db_insert_checklist(payer_username: str, descr: str) -> int:
     """)
     conn.commit()
 
+def end_create_checklist(update: Update, context: CallbackContext) -> str:
+    clear_temp_data(context, [CHECKLIST])
+    selecting_action(update, context)
+    return END
+
 ##############################
 # MANAGE CHECKLIST FUNCTIONS #
 ##############################
 
-# TODO: Manage checklist menu
-# def view_checklists(update: Update, context: CallbackContext) -> str:
-#     """view all checklists created by you"""
-#     payer_username = get_username(update)
-#     payer_checklists = get_payer_checklists(payer_username)
-#     buttons = []
-#     pass
+def view_checklists(update: Update, context: CallbackContext) -> str:
+    """view all checklists created by username"""
+    payer_username = get_username(update)
+    payer_checklists = db_get_open_payer_checklists(payer_username)
 
-# def manage_checklist(update: Update, context: CallbackContext) -> str:
-#     """Sub menu to manage checklist"""
-#     buttons = [
-#         [
-#             InlineKeyboardButton(
-#                 text = "Add",
-#                 callback_data = str(ADD_REQUEST)
-#             ),
-#             InlineKeyboardButton(
-#                 text = "Edit/Del",
-#                 callback_data = str(EDIT_DEL_REQUESTS)
-#             )
-#         ]
-#     ]
-#     keyboard = InlineKeyboardMarkup(keyboard)
+    if not payer_checklists:
+        buttons = [
+            [
+                InlineKeyboardButton(
+                    text = "Create one",
+                    callback_data = str(NAME_CHECKLIST)
+                ),
+                InlineKeyboardButton(
+                    text = "Back",
+                    callback_data = str(END)
+                )
+            ]
+        ]
+        text = "You have not created any checklists!"
+        text += "\n\nButton Guide:"
+        text += "\nCreate one: Start creating a checklist."
+        text += "\nBack: Return to start menu."
     
-#     checklist_name = get_temp_data(context, [CHECKLIST, NAME])
-#     text = f""
-#     return MANAGE_CHECKLIST
+    else:
+        text = "All the checklists created by you.\n"
+        num_to_id_dct = {}
+        for i in range(len(payer_checklists)):
+            checklist = payer_checklists[i]
+            num_to_id_dct[i + 1] = checklist[0]
+            checklist_str = checklist_to_string(checklist)
+            text += f"Checklist {i + 1}: {checklist_str}\n\n"
+        text += "Press the button with the number that corresponds to the Checklist number."
+        buttons = []
+        for i in range(len(payer_checklists)):
+            button_text = str(i + 1)
+            checklist_id = num_to_id_dct[i + 1]
+            buttons.append([
+                InlineKeyboardButton(
+                    text = button_text, 
+                    callback_data = int(checklist_id)
+                )])
+        buttons.append([\
+            InlineKeyboardButton(
+                text = "Cancel",
+                callback_data = str(END)
+            )    
+        ])
+    keyboard = InlineKeyboardMarkup(buttons)
+    update.callback_query.answer()
+    update.callback_query.edit_message_text(
+        text = text,
+        reply_markup = keyboard
+    )
+    return VIEW_CHECKLISTS
+
+def manage_checklist(update: Update, context: CallbackContext) -> str:
+    """Sub menu to manage checklist"""
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text = "Add",
+                callback_data = str(SELECT_INFO_REQUEST)
+            ),
+            InlineKeyboardButton(
+                text = "Edit/Del",
+                callback_data = str(EDIT_DEL_REQUESTS)
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text = "Remind",
+                callback_data = str(SEND_REMINDERS)
+            )
+        ]
+        [
+            InlineKeyboardButton(
+                text = "Back",
+                callback_data = str(VIEW_CHECKLISTS)
+            ),
+            InlineKeyboardButton(
+                text = "Cancel",
+                callback_data = str(END)
+            )
+        ]
+    ]
+    keyboard = InlineKeyboardMarkup(buttons)
+    
+    checklist_id = update.callback_query.data
+    store_temp_data(context, checklist_id, [CHECKLIST, ID])
+    checklist = db_get_checklist(checklist_id)
+    checklist_str = checklist_to_string(checklist)
+    text = f"{checklist_str}"
+
+    update.callback_query.answer()
+    update.callback_query.edit_message_reply_markup(
+        text = text,
+        reply_markup = keyboard
+    )
+    return MANAGE_CHECKLIST
 
 def select_info_request(update: Update, context: CallbackContext) -> str:
+    infotype = update.callback_query.data
+    store_temp_data(context, infotype, [REQUEST, INFOTYPE])
     """Add requests to checklist one by one"""
     buttons = [
+        [
+            InlineKeyboardButton(
+                text = "Username",
+                callback_data = str(USERNAME)
+            ),
+            InlineKeyboardButton(
+                text = "Description",
+                callback_data = str(DESCRIPTION)
+            ),
+            InlineKeyboardButton(
+                text = "Cost",
+                callback_data = str(COST)
+            )
+        ],
         [
             InlineKeyboardButton(
                 text = "Done",
@@ -413,42 +535,48 @@ def select_info_request(update: Update, context: CallbackContext) -> str:
             ),
             InlineKeyboardButton(
                 text = "Cancel",
-                callback_data = str()
+                callback_data = str(END)
             )
         ]
     ]
     keyboard = InlineKeyboardMarkup(buttons)
-    checklist_id = get_temp_data(context, [CHECKLIST, ID])
-    payer_username = get_temp_data(context, [CHECKLIST, USERNAME])
     checklist_name = get_temp_data(context, [CHECKLIST, NAME])
     if checklist_name == None:
         printable_name = ""
     else:
         printable_name = " " + checklist_name
-    text = f"Adding a new payment request to Checklist{checklist_name}."
+    text = f"Adding a new payment request to Checklist{printable_name}."
     text += request_to_string(context)
     text += "Select one of the following info to add.\n\nButton Guide\nDone: Review Request.\nCancel: Return to start menu"
+    update.callback_query.answer()
+    update.callback_query.edit_message_text(
+        text = text,
+        reply_markup = keyboard
+    )
     return SELECT_INFO_REQUEST
 
-def add_info_request(update: Update, context: CallbackContext) -> str:
-    checklist_id = get_temp_data(context, [CHECKLIST, ID])
+def ask_for_info_request(update: Update, context: CallbackContext) -> str:
+    """ask user for the information of the type specified in previous menu"""
     infotype = get_temp_data(context, [REQUEST, INFOTYPE])
+    if infotype == None:
+        infotype = str(USERNAME)
 
     buttons = [
         [
             InlineKeyboardButton(
                 text = "Back",
-                callback_data = str(ADD_REQUEST)
+                callback_data = str(SELECT_INFO_REQUEST)
             ),
             InlineKeyboardButton(
                 text = "Cancel",
-                callback_data = str(SELECTING_ACTION)
+                callback_data = str(END)
             )
         ]
     ]
     keyboard = InlineKeyboardMarkup(buttons)
 
     """Different texts for different infotype"""
+    text = ""
     if infotype == str(DESCRIPTION):
         text = "Please type and send a description of what was bought."
     elif infotype == str(COST):
@@ -463,7 +591,7 @@ def add_info_request(update: Update, context: CallbackContext) -> str:
         reply_markup = keyboard
     )
     
-    return ADD_INFO_REQUEST
+    return ASK_FOR_INFO_REQUEST
 
 def save_info_request(update: Update, context: CallbackContext) -> str:
     """Takes user input and temporarily stores it"""
@@ -492,7 +620,7 @@ def confirm_request(update: Update, context: CallbackContext) -> str:
         [
             InlineKeyboardButton(
                 text = "Cancel",
-                callback_context = str(SELECTING_ACTION) # TODO: change to manage checklist menu
+                callback_context = str(MANAGE_CHECKLIST) # TODO: change to manage checklist menu
             )
         ]
     ]
@@ -501,6 +629,12 @@ def confirm_request(update: Update, context: CallbackContext) -> str:
     text = "Please review your request for payment.\n"
     text += request_to_string(context) + "\n\n"
     text += "Button Guide\nEdit: Return to selecting info to edit\nConfirm: Adds request to checklist if all details are filled up.\nCancel: Return to start menu"
+    update.callback_query.answer()
+    update.callback_query.edit_message_text(
+        text = text,
+        reply_markup = keyboard
+    )
+    
     return CONFIRM_REQUEST
 
 def accept_request(update: Update, context: CallbackContext) -> str:
@@ -517,16 +651,16 @@ def accept_request(update: Update, context: CallbackContext) -> str:
 def db_insert_request(checklist_id: int, debtor_username: str, descr: str, cost: float) -> int:
     """Store request into database"""
     curr.execute(f"""
-    INSERT INTO Requests(order_id, debtro_username, descr, cost)
+    INSERT INTO Requests(order_id, debtor_username, descr, cost)
     VALUES('{checklist_id}', '{debtor_username}', '{descr}', '{cost}');
     """)
 
     return conn.commit()
 
-def request_to_string(context: CallbackContext, *id: Tuple[int]) -> str:
-    if id:
-        id = id[0]
-        request_tpl = db_get_request(id)
+def request_to_string(context: CallbackContext, *request_id: Tuple[int]) -> str:
+    if request_id:
+        request_id = request_id[0]
+        request_tpl = db_get_request(request_id)
         debtor_username, descr, cost = request_tpl[2:5]
     else:
         debtor_username = get_temp_data(context, [REQUEST, USERNAME])
@@ -534,31 +668,107 @@ def request_to_string(context: CallbackContext, *id: Tuple[int]) -> str:
         cost = get_temp_data(context, [REQUEST, COST])
     return f"@{debtor_username} bought {descr} for ${cost}."
 
-def db_get_request(id: int) -> Tuple:
+def db_get_request(request_id: int) -> Tuple:
     curr.execute(f"""
     SELECT * FROM Requests
-    WHERE id = {id}
+    WHERE id = {request_id}
     """)
     return curr.fetchall()
 
-def print_checklist(update: Update, context: CallbackContext) -> str:
-    return PRINT_CHECKLIST
+def db_get_open_checklists_of_payer_username(username: str) -> Tuple[Tuple, ...]:
+    curr.execute(f"""
+    SELECT * FROM Checklists
+    WHERE payer_username = '{username}'
+    AND closed = FALSE;
+    """)
+    return curr.fetchall()
 
-def checklist_to_string() -> str:
-    return ""
+def db_get_checklist(checklist_id: int) -> Tuple:
+    curr.execute(f"""
+    SELECT * FROM Checklists
+    WHERE id = {checklist_id};
+    """)
+    return curr.fetchall()
+
+def checklist_to_string(checklist: Tuple) -> str:
+    checklist_id = checklist[0]
+    descr = checklist[3]
+    datetime = checklist[2]
+    requests = db_get_requests_of_checklist(checklist_id)
+    requests_str = ""
+    for request in requests:
+        request_id = request[0]
+        requests_str += f"{request_to_string(request_id)}"
+    return f"{descr}, created on {datetime}"
+
+def db_get_requests_of_checklist(checklist_id: int) -> Tuple[Tuple, ...]:
+    curr.execute(f"""
+    SELECT id FROM REQUESTS
+    WHERE checklist_id = {checklist_id};
+    """)
+    return curr.fetchall()
+
+def db_get_unpaid_requests_of_checklist(checklist_id: int) -> Tuple[Tuple, ...]:
+    curr.execute(f"""
+    SELECT * FROM Requests
+    WHERE checklist_id = {checklist_id}
+    AND paid = FALSE
+    """)
+    return curr.fetchall()
+
+def end_manage_checklist(update: Update, context: CallbackContext) -> str:
+    clear_temp_data(context, [REQUEST])
+    clear_temp_data(context, [CHECKLIST])
+    selecting_action(update, context)
+    return END
 
 ###########################
-# PROVIDE PROOF FUNCTIONS #
+# SEND REMINDER FUNCTIONS #
 ###########################
 
-def select_unpaid(update: Update, context: CallbackContext) -> str:
-    pass
+def send_reminders(update: Update, context: CallbackContext) -> str:
+    payer_username = get_username(update)
+    checklist_id = get_temp_data(context, [CHECKLIST, ID])
+    
+    # """Coming from start menu, send reminder for all unpaid requests"""
+    if not checklist_id == None:
+        checklists = db_get_open_checklists_of_payer_username(payer_username)
+        for checklist in checklists:
+            send_reminder(update, checklist)
+    
+    # """Coming from manage checklist, send reminder for unpaid requests in chosen checklist"""
+    else:
+        checklist = db_get_checklist(checklist_id)
+        send_reminder(update, checklist)
 
-#############################
-# SHOW ALL ORDERS FUNCTIONS #
-#############################
+    return SEND_REMINDERS
 
-
+def send_reminder(update: Update, checklist: Tuple):
+    checklist_id = checklist[0]
+    payer_username = checklist[1]
+    requests = db_get_unpaid_requests_of_checklist(checklist_id)
+    for request in requests:
+        req_descr = request[3]
+        req_cost = request[4]
+        msg_str = f"Reminder to pay @{payer_username} ${req_cost} for {req_descr}."
+        debtor_username = request[2]
+        buttons = [InlineKeyboardButton(
+            text = "Paid",
+            callback_data = str(PAID)
+        )]
+        keyboard = InlineKeyboardMarkup(buttons)
+        is_sent = Bot.send_message(
+            chat_id = f"@{debtor_username}",
+            text = msg_str,
+            reply_markup = keyboard
+        )
+        """Inform payer of status of sending each reminder"""
+        text = ""
+        if is_sent:
+            text = f"@{debtor_username} reminded to pay {req_cost} for {req_descr}"
+        else:
+            text = f"Could not remind @{debtor_username} to pay {req_cost} for {req_descr}"
+        update.message.reply_text(text = text)
 
 ########################
 # ADDITIONAL FUNCTIONS #
@@ -576,39 +786,98 @@ def main():
     updater = Updater("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA") 
     dispatcher = updater.dispatcher
 
-    
-    
-    # Create checklist handler
+    ############################
+    # Manage checklist handler #
+    ############################
+
+    # Initialise create_checklist_handler, defined below
+    create_checklist_handler = ConversationHandler(
+        entry_points = [],
+        states = {},
+        fallbacks = [],
+        map_to_parent = {}
+    )
+
+    # Support buttons for selecting info request
+    select_info_request_handler = [
+        CallbackQueryHandler(
+            ask_for_info_request,
+            pattern = f'^{DESCRIPTION}$|^{USERNAME}$|^{COST}$'
+        ),
+        CallbackQueryHandler(
+            confirm_request,
+            pattern = f"^{CONFIRM_REQUEST}&"
+        ),
+    ]
+
+    # Supports buttons for asking for info
+    ask_for_info_request_handler = [
+        CallbackQueryHandler(
+            select_info_request,
+            pattern = "^" + str(SELECT_INFO_REQUEST) + "$"
+        ),
+    ]
+
+    # Menu
+    manage_checklist_handler = ConversationHandler(
+        entry_points = [
+            CallbackQueryHandler(
+                view_checklists,
+                pattern = "^" + str(VIEW_CHECKLISTS) + "$"
+            ),
+            CallbackQueryHandler(
+                ask_for_info_request,
+                pattern = "^" + str(ASK_FOR_INFO_REQUEST) + "$"
+            )
+        ],
+        states = {
+            ACCEPT_NAME_CHECKLIST: ask_for_info_request_handler,
+            VIEW_CHECKLISTS: [create_checklist_handler],
+            SELECT_INFO_REQUEST: select_info_request_handler,
+            ASK_FOR_INFO_REQUEST: ask_for_info_request_handler,
+        },
+        fallbacks = [
+            CallbackQueryHandler(
+                end_manage_checklist,
+                pattern = f"^{END}$"
+            ),
+            CommandHandler('stop', stop_nested)
+        ],
+        map_to_parent = {
+            END: SELECTING_ACTION,
+            STOPPING: STOPPING
+        }
+    )
+
+    ############################
+    # Create checklist handler #
+    ############################
+
     # Supports input and buttons for naming checklist
     naming_checklist_handlers = [
         MessageHandler(Filters.text & ~Filters.command, confirm_name_checklist),
         CallbackQueryHandler(
+            selecting_action,
+            pattern = "^" + str(SELECTING_ACTION) + "$"
+        ),
+        CallbackQueryHandler(
             confirm_name_checklist,
-            pattern = "^" + str(CONFIRM_NAME) + "$"
+            pattern = "^" + str(CONFIRM_NAME_CHECKLIST) + "$"
         )
     ]
     # Supports buttons for confirming checklist
-    confirm_name_handlers = [
+    confirm_name_checklist_handlers = [
         CallbackQueryHandler(
-            accept_name_checklist, 
-            pattern = "^" + str(ACCEPT_NAME) + "$"
+            accept_name_checklist,
+            pattern = "^" + str(ACCEPT_NAME_CHECKLIST) + "$"
         ),
         CallbackQueryHandler(
             name_checklist,
             pattern = "^" + str(NAME_CHECKLIST) + "$"
         )
     ]
-    # Supports buttons for accepting checklist
-    accept_name_handlers = [
-        CallbackQueryHandler(
-            add_info_request,
-            pattern = "^" + str(ADD_INFO_REQUEST) + "$"
-        ),
-        CallbackQueryHandler(
-            start,
-            pattern = "^" + str(SELECTING_ACTION) + "$"    
-        )
-    ]   
+
+    # Menu
     create_checklist_handler = ConversationHandler(
         entry_points = [
             CallbackQueryHandler(
@@ -618,38 +887,43 @@ def main():
         ],
         states = {
             NAME_CHECKLIST: naming_checklist_handlers,
-            CONFIRM_NAME: confirm_name_handlers,
-            ACCEPT_NAME: accept_name_handlers
+            CONFIRM_NAME_CHECKLIST: confirm_name_checklist_handlers,
+            ACCEPT_NAME_CHECKLIST: [manage_checklist_handler],
         },
         fallbacks = [
-            CommandHandler('stop', stop)
+            CallbackQueryHandler(
+                end_create_checklist,
+                pattern = f"^{END}$" 
+            ),
+            CommandHandler('stop', stop_nested)
         ],
         map_to_parent = {
             END: SELECTING_ACTION,
-            SELECTING_ACTION: SELECTING_ACTION,
             STOPPING: END
         }
     )
 
-    # Top level ConversationHandler (selecting action)
+    ####################################################
+    # Top level ConversationHandler (selecting action) #
+    ####################################################
     # supports the buttons for start menu
     selection_handlers = [
         create_checklist_handler,
+        manage_checklist_handler,
         CallbackQueryHandler(
             end,
             pattern = "^" + str(END) + "$"
         )
     ]
 
+    # Menu
     conv_handler = ConversationHandler(
         entry_points = [
-            CommandHandler("start", start)
+            CommandHandler("start", selecting_action)
         ],
         states = {
-            SELECTING_ACTION: selection_handlers,
-            NAME_CHECKLIST: selection_handlers,
-
-            STOPPING: [CommandHandler('start', start)]
+            SELECTING_ACTION: selection_handlers,     
+            STOPPING: [CommandHandler('start', selecting_action)]
         },
         fallbacks = [
             CommandHandler('stop', stop)
