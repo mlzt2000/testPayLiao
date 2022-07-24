@@ -1,3 +1,4 @@
+from typing import Tuple, Any
 from telegram import Update
 
 def get_username(update: Update) -> str:
@@ -6,8 +7,8 @@ def get_username(update: Update) -> str:
         callback_query = update.callback_query
         if callback_query == None:
             return None
-        return callback_query.from_user.username
-    return message.from_user.username
+        return "@" + callback_query.from_user.username
+    return "@" + message.from_user.username
 
 def get_text(update: Update) -> str:
     message = update.message

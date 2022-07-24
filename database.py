@@ -1,5 +1,5 @@
 import sqlite3
-from typing import Tuple
+from typing import Tuple, Any
 
 conn = sqlite3.connect(
     "payliaodb.db", 
@@ -34,6 +34,7 @@ def create_all_tables():
         debtor_username TEXT NOT NULL REFERENCES Users(username) ON UPDATE CASCADE,
         descr TEXT NOT NULL,
         cost FLOAT NOT NULL,
+        datetime_created TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
         paid BOOLEAN NOT NULL DEFAULT FALSE,
         acknowledged BOOLEAN NOT NULL DEFAULT FALSE
     );
@@ -75,54 +76,77 @@ def insert_user(id: int, username: str) -> Tuple:
 # SELECT FUNCTIONS #
 ####################
 
-def get_request(request_id: int) -> Tuple:
+def get_all_requests() -> Tuple[Tuple[Any, ...], ...]:
     curr.execute(f"""
     SELECT * FROM Requests
-    WHERE id = {request_id}
     """)
     return curr.fetchall()
 
-def get_open_checklists_of_payer_username(username: str) -> Tuple[Tuple, ...]:
+def get_request_from_id(request_id: int) -> Tuple:
     curr.execute(f"""
-    SELECT * FROM Checklists
+    SELECT * FROM Requests
+    WHERE id = {request_id};
+    """)
+    out = curr.fetchall()
+    if out:
+        return out[0]
+    return out
+
+def get_all_requests_involving_username(username: str) -> Tuple[Tuple[Any, ...], ...]:
+    curr.execute(f"""
+    SELECT * FROM Requests
     WHERE payer_username = '{username}'
-    AND closed = FALSE;
+    OR debtor_username = '{username}';
     """)
     return curr.fetchall()
 
-def get_checklist(checklist_id: int) -> Tuple:
-    curr.execute(f"""
-    SELECT * FROM Checklists
-    WHERE id = {checklist_id};
-    """)
-    return curr.fetchall()
-
-def get_requests_of_checklist(checklist_id: int) -> Tuple[Tuple, ...]:
-    curr.execute(f"""
-    SELECT id FROM REQUESTS
-    WHERE checklist_id = {checklist_id};
-    """)
-    return curr.fetchall()
-
-def get_unpaid_requests_of_checklist(checklist_id: int) -> Tuple[Tuple, ...]:
+def get_all_requests_from_payer_username(payer_username: str) -> Tuple[Tuple[Any, ...], ...]:
     curr.execute(f"""
     SELECT * FROM Requests
-    WHERE checklist_id = {checklist_id}
-    AND paid = FALSE
+    WHERE payer_username = '{payer_username}';
     """)
     return curr.fetchall()
 
-def get_user_from_id(id: int) -> Tuple:
+def get_unpaid_requests_from_debtor_username(debtor_username: str) -> Tuple[Tuple[Any, ...], ...]:
+    curr.execute(f"""
+    SELECT * FROM Requests
+    WHERE debtor_username = '{debtor_username}'
+    AND paid = False;
+    """)
+    return curr.fetchall()
+
+def get_unacknowledged_requests_from_payer_username(payer_username: str) -> Tuple[Tuple[Any, ...], ...]:
+    curr.execute(f"""
+    SELECT * FROM Requests
+    WHERE payer_username = '{payer_username}'
+    AND paid = True
+    AND acknowledged = False;
+    """)
+    return curr.fetchall()
+
+def get_user_from_id(id: int) -> Tuple[Any, ...]:
     curr.execute(f"""
     SELECT * FROM Users
     WHERE id = {id};
     """)
-    return curr.fetchall()
+    out = curr.fetchall()
+    if out:
+        return out[0]
+    return out
 
-def get_user_from_username(username: str) -> Tuple:
+def get_user_from_username(username: str) -> Tuple[Any, ...]:
     curr.execute(f"""
     SELECT * FROM Users
     WHERE username = '{username}';
+    """)
+    out = curr.fetchall()
+    if out:
+        return out[0]
+    return out
+
+def get_all_users() -> Tuple[Tuple[Any,...],...]:
+    curr.execute(f"""
+    SELECT * FROM Users
     """)
     return curr.fetchall()
 
@@ -130,10 +154,36 @@ def get_user_from_username(username: str) -> Tuple:
 # UPDATE FUNCTIONS #
 ####################
 
+def mark_request_as_paid_from_id(request_id: int) -> Tuple:
+    curr.execute(f"""
+    UPDATE Requests
+    SET paid = True
+    WHERE id = {request_id};
+    """)
+    return conn.commit()
+
+def mark_request_as_unpaid_from_id(request_id: int) -> Tuple:
+    print(request_id)
+    curr.execute(f"""
+    UPDATE Requests
+    SET paid = False
+    WHERE id = {request_id};
+    """)
+    return conn.commit()
+
+def mark_request_as_acknowledged_from_id(request_id: int) -> Tuple:
+    print(request_id)
+    curr.execute(f"""
+    UPDATE Requests
+    SET acknowledged = True
+    WHERE id = {request_id};
+    """)
+    return conn.commit()
+
 def update_user_username(id: int, username: str) -> Tuple:
     curr.execute(f"""
     UPDATE Users
     SET username = '{username}'
     WHERE id = {id};
     """)
-    conn.commit()
+    return conn.commit()

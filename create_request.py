@@ -2,7 +2,7 @@ from constants import *
 import database as db
 import temp_store as temp
 from others import *
-from main import selecting_action
+import main
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     CallbackContext,
@@ -19,7 +19,7 @@ def selecting_request_info(update: Update, context: CallbackContext) -> str:
     text += "\n\nButton Guide:"
     text += "\nUsername: Click this button to fill up the telegram username of the person who owes you payment."
     text += "\nDescription: Click this button to fill up the description of the item you paid for."
-    text += "\nCost: Click this button to fill up the cost of the itm you paid for."
+    text += "\nCost: Click this button to fill up the cost of the item you paid for."
     text += "\n\nNavigational Button Guide"
     text += "\nDone: Click to complete the request only after filling in all three sets of information"
     text += "\nCancel: Cancel the creation of the reqeust and return to the start menu."
@@ -125,10 +125,8 @@ def is_appropriate(infotype: str, info: str) -> bool:
 
 def is_appropriate_username(username: str) -> bool:
     if not username or username[0] != '@':
-        print("here")
         return False
     if not db.get_user_from_username(username):
-        print(db.get_user_from_username(username))
         return False
     return True
 
@@ -208,29 +206,21 @@ def stop_create_request(update: Update, context: CallbackContext) -> str:
     update.message.reply_text(text = "Okay, bye!")
 
     # clear temp data
-    temp.clear_temp_data(context, [REQUEST])
+    temp.clear_temp_data(context)
 
     return STOPPING
 
 def end_create_request(update: Update, context: CallbackContext) -> str:
     temp.clear_temp_data(context, [REQUEST])
-    selecting_action(update, context)
+    main.selecting_action(update, context)
     return END
 
 # Conversation handler
 create_request_handler = ConversationHandler(
-        entry_points = [
-            CallbackQueryHandler(
-                selecting_request_info,
-                pattern = f"^{SELECTING_REQUEST_INFO}$"
-            )
-        ],
+        entry_points = [CallbackQueryHandler(selecting_request_info,pattern = f"^{SELECTING_REQUEST_INFO}$")],
         states = {
             SELECTING_REQUEST_INFO: [
-                CallbackQueryHandler(
-                    ask_for_request_info,
-                    pattern=f'^{DESCRIPTION}$|^{USERNAME}$|^{COST}$'
-                ),
+                CallbackQueryHandler(ask_for_request_info,pattern=f'^{DESCRIPTION}$|^{USERNAME}$|^{COST}$'),
                 CallbackQueryHandler(confirm_request, pattern=f"^{CONFIRM_REQUEST}$")
             ],
             ASK_FOR_REQUEST_INFO: [
@@ -262,5 +252,5 @@ def request_to_string(context: CallbackContext) -> str:
     cost = temp.get_temp_data(context, [REQUEST, COST])
     text += f"Username: {debtor_username if debtor_username else 'Yet to fill up'}."
     text += f"\nDescription: {description if description else 'Yet to fill up'}."
-    text += f"\nCost: {cost if cost else 'Yet to fill up'}."
+    text += f"\nCost: {'$' + cost if cost else 'Yet to fill up'}."
     return text

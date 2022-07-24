@@ -1,4 +1,3 @@
-import logging 
 from constants import *
 import database as db
 import temp_store as temp
@@ -22,34 +21,24 @@ from telegram.ext import (
 
 def selecting_action(update: Update, context: CallbackContext) -> str:
 
-    username = f"@{get_username(update)}"
+    username = get_username(update)
     user_id = get_user_id(update)
     db.insert_user(user_id, username)
 
     """Main Menu for the bot, gives access to all other functions"""
     welcome_text = "Hello, and thank you for using PayLiaoBot!\n"
     welcome_text += "For this bot to work, please make sure that your friends are have started the bot, and " # TODO: ADD PRIVACY DECLARATIONS
-    text = "Button Guide:\nCreate Checklist: Make a list of money that people owe you.\nManage Checlists: View all Checklists that you have created, and edit them."
+    text = "Button Guide:"
+    text += "\nCreate Checklist: Make a list of money that people owe you."
+    text += "\nManage Checklists: View all Checklists that you have created, and edit them."
     buttons = [
         [
-            InlineKeyboardButton(
-                text = 'Create request',
-                callback_data = str(SELECTING_REQUEST_INFO)
-            ),
-            InlineKeyboardButton(
-                text = "View all requests",
-                callback_data = str(VIEW_REQUESTS)
-            )
+            InlineKeyboardButton(text = 'Create request', callback_data = str(SELECTING_REQUEST_INFO)),
+            InlineKeyboardButton(text = "View all requests", callback_data = str(VIEW_REQUESTS))
         ],
         [
-            InlineKeyboardButton(
-                text = "Pay",
-                callback_data = str(PAY)
-            ),
-            InlineKeyboardButton(
-                text = "Acknowledge",
-                callback_data = str(ACKNOWLEDGE)
-            )
+            InlineKeyboardButton(text = "Pay", callback_data = str(VIEW_OWED)),
+            InlineKeyboardButton(text = "Acknowledge", callback_data = str(VIEW_UPDATES))
         ],
         [
             InlineKeyboardButton(
@@ -70,7 +59,6 @@ def selecting_action(update: Update, context: CallbackContext) -> str:
         )
         temp.store_temp_data(context, True, [SELECTING_ACTION, START_OVER])
     else:
-        print(temp.get_temp_data(context, [SELECTING_ACTION, START_OVER]))
         """using callback_query.answer() means that coming back to start menu must be from InlineKeyboardButton"""
         update.callback_query.answer()
         update.callback_query.edit_message_text(
@@ -109,13 +97,14 @@ def main():
     updater = Updater("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA") 
     dispatcher = updater.dispatcher
 
+    # db.drop_all_tables()
     db.create_all_tables()
 
     selection_handlers = [
         create_request.create_request_handler,
-        # view_requests.view_requests_handler,
-        # pay.pay_handler,
-        # acknowledge.acknowledge_handler,
+        view_requests.view_requests_handler,
+        pay.pay_handler,
+        acknowledge.acknowledge_handler,
         CallbackQueryHandler(end, pattern = f"^{END}$"),
     ]
 
