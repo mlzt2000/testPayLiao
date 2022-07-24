@@ -13,6 +13,12 @@ from telegram.ext import (
     CommandHandler,
 )
 
+"""
+- Function that displays the list of all Requests that are marked as unpaid by the Debtor.
+- If there are such Requests, provide a button for User to continue to acknowledge the Requests.
+- Provide a button for User to return to start menu
+- Returns VIEW_OWNED state
+"""
 def view_owed(update: Update, context: CallbackContext) -> str:
     debtor_username = get_username(update)
     text = "View what your friends have requested you to return.\n"
@@ -46,6 +52,11 @@ def view_owed(update: Update, context: CallbackContext) -> str:
         temp.store_temp_data(context, True, [PAY, START_OVER])
     return VIEW_OWED
 
+"""
+- Function that displays the same list as view_owed, and provides buttons for the User to mark the requests as complete, or reject it.
+- If there are no more requests, provide a button for User to return to start menu.
+- Returns SELECT_UPDATE state
+"""
 def select_request(update: Update, context: CallbackContext) -> str:
     text = "View what your friends have requested you to return.\n"
     debtor_username = get_username(update)
@@ -74,6 +85,11 @@ def select_request(update: Update, context: CallbackContext) -> str:
     update.callback_query.edit_message_text(text=text, reply_markup=keyboard)
     return SELECT_REQUEST
 
+"""
+- Function that marks the request as paid.
+- Resets the temporarily stored data.
+- Automatically returns to select_request to choose another request.
+"""
 def mark_as_paid(update: Update, context: CallbackContext) -> str:
     request_id = int(update.callback_query.data) - 999
     db.mark_request_as_paid_from_id(request_id)
@@ -84,16 +100,29 @@ def mark_as_paid(update: Update, context: CallbackContext) -> str:
     time.sleep(2.5)
     return select_request(update, context)
 
+"""
+- Stops the bot from within this sub-menu with the /stop command
+- Clears all temporary data to prepare for /start
+- Returns STOPPING state
+"""
 def stop_pay(update: Update, context: CallbackContext) -> str:
     temp.clear_temp_data(context)
     update.message.reply_text("Okay, bye!")
     return STOPPING
 
+"""
+- Returns the user to the start menu.
+- Clears all temporary data used in this sub-menu
+- Returns END state
+"""
 def end_pay(update: Update, context: CallbackContext) -> str:
     temp.clear_temp_data(context, [PAY])
     main.selecting_action(update, context)
     return END
 
+"""
+Sub-menu ConversationHandler
+"""
 pay_handler = ConversationHandler(
     entry_points=[
         CallbackQueryHandler(view_owed, pattern=f"^{VIEW_OWED}")
@@ -107,7 +136,9 @@ pay_handler = ConversationHandler(
         CommandHandler('stop', stop_pay)
     ],
     map_to_parent={
+        # END state maps to SELECTING_ACTION in start menu
         END: SELECTING_ACTION,
+        # STOPPING state maps to END in start menu
         STOPPING: END
     }
 )

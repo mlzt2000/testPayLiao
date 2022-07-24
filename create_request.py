@@ -13,6 +13,12 @@ from telegram.ext import (
     MessageHandler
 )
 
+"""
+- Function that creates a menu for Users to choose either Username, Description, or Cost for the request they are creating.
+- Provide a button to confirm the request after all details are filled in.
+- Also provides button to return to start menu.
+- Returns SELECTING_REQUEST_INFO state
+"""
 def selecting_request_info(update: Update, context: CallbackContext) -> str:
     text = "Create a request by filling up the following information! You can also edit information you have already entered."
     text += f"\n\n{request_to_string(context)}"
@@ -45,6 +51,10 @@ def selecting_request_info(update: Update, context: CallbackContext) -> str:
     temp.store_temp_data(context, True, [REQUEST, START_OVER])
     return SELECTING_REQUEST_INFO
 
+"""
+- Function that asks Users to key in information based on the button they pressed in selecting_request_info
+- Returns ASK_FOR_REQUEST_INFO state 
+"""
 def ask_for_request_info(update: Update, context: CallbackContext) -> str:
     infotype = temp.get_temp_data(context, [REQUEST, INFOTYPE])
     if not infotype:
@@ -81,6 +91,12 @@ def ask_for_request_info(update: Update, context: CallbackContext) -> str:
         update.callback_query.edit_message_text(text=text, reply_markup=keyboard)
     return ASK_FOR_REQUEST_INFO
 
+"""
+- Function that checks for validity of data, and if valid, saves it to the temporary storage before allowing user to select other info to fill in.
+- If invalid, shows error message and instructs user on appropriate use.
+- If invalid, asks user to resend the info.
+- Provide buttons for user to choose a different info to fill in, or to cancel the creation of the request.
+"""
 def save_request_info(update: Update, context: CallbackContext) -> str:
     infotype = temp.get_temp_data(context, [REQUEST, INFOTYPE])
     info = update.message.text
@@ -139,6 +155,12 @@ def is_appropriate_cost(cost: str) -> bool:
     except ValueError:
         return False
 
+"""
+- Function that checks if all info has been filled up, and asks if the User is sure that the info is correct.
+- Provides a button for User to go back to edit information.
+- If not all the info has been filled up, show an error message.
+- Returns CONFIRM_REQUEST state
+"""
 def confirm_request(update: Update, context: CallbackContext) -> str:
     debtor_username = temp.get_temp_data(context, [REQUEST, USERNAME])
     description = temp.get_temp_data(context, [REQUEST, DESCRIPTION])
@@ -179,6 +201,12 @@ def confirm_request(update: Update, context: CallbackContext) -> str:
     
     return CONFIRM_REQUEST
 
+"""
+- Function that saves the request created into database.
+- Provides buttons for user to create a new request, or to return to the start menu
+- Clears temp data regarding existing request.
+- Returns SAVE_REQUEST state
+"""
 def save_request(update: Update, context: CallbackContext) -> str:
     debtor_username = temp.get_temp_data(context, [REQUEST, USERNAME])
     description = temp.get_temp_data(context, [REQUEST, DESCRIPTION])
@@ -202,6 +230,11 @@ def save_request(update: Update, context: CallbackContext) -> str:
 
     return SAVE_REQUEST
 
+"""
+- Stops the bot from within this sub-menu with the /stop command
+- Clears all temporary data to prepare for /start
+- Returns STOPPING state
+"""
 def stop_create_request(update: Update, context: CallbackContext) -> str:
     update.message.reply_text(text = "Okay, bye!")
 
@@ -210,12 +243,19 @@ def stop_create_request(update: Update, context: CallbackContext) -> str:
 
     return STOPPING
 
+"""
+- Returns the user to the start menu.
+- Clears all temporary data used in this sub-menu
+- Returns END state
+"""
 def end_create_request(update: Update, context: CallbackContext) -> str:
     temp.clear_temp_data(context, [REQUEST])
     main.selecting_action(update, context)
     return END
 
-# Conversation handler
+"""
+Sub-menu ConversationHandler
+"""
 create_request_handler = ConversationHandler(
         entry_points = [CallbackQueryHandler(selecting_request_info,pattern = f"^{SELECTING_REQUEST_INFO}$")],
         states = {

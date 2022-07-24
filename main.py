@@ -19,18 +19,31 @@ from telegram.ext import (
 # TOP LEVEL FUNCTIONS #
 #######################
 
+"""
+- Start menu for the bot, buttons lead to various sub-menus and other functions.
+- Entering this menu updates the user's username in the Users table in the database
+- Returns SELECTING_ACTION state
+"""
 def selecting_action(update: Update, context: CallbackContext) -> str:
-
+    # Updating username in database
     username = get_username(update)
     user_id = get_user_id(update)
     db.insert_user(user_id, username)
 
-    """Main Menu for the bot, gives access to all other functions"""
+    # Text
     welcome_text = "Hello, and thank you for using PayLiaoBot!\n"
-    welcome_text += "For this bot to work, please make sure that your friends are have started the bot, and " # TODO: ADD PRIVACY DECLARATIONS
+    welcome_text += "For this bot to work, please make sure that your friends are have started the bot, and take note that this bot will collect your username."
+    welcome_text += "\n\nThis bot allows users to request payments from other users."
+    welcome_text += "\nAfter payement has been made, requests can be marked as paid, which will appear for the sender to check."
+    welcome_text += "\nThe sender can then acknowledge the payment to mark the transaction as complete."
     text = "Button Guide:"
-    text += "\nCreate Checklist: Make a list of money that people owe you."
-    text += "\nManage Checklists: View all Checklists that you have created, and edit them."
+    text += "\nCreate request: Ask another user to make a payment to you."
+    text += "\nView all requests: See all completed and pending transactions involving you in chronological order."
+    text += "\nPay: See all outstanding payments that you owe others, and mark them as paid."
+    text += "\nAcknowledge: See all payments that have been made to you, and mark them as complete."
+    text += "\nDone: Stops the bot."
+    
+    # Buttons and relevant data
     buttons = [
         [
             InlineKeyboardButton(text = 'Create request', callback_data = str(SELECTING_REQUEST_INFO)),
@@ -41,25 +54,22 @@ def selecting_action(update: Update, context: CallbackContext) -> str:
             InlineKeyboardButton(text = "Acknowledge", callback_data = str(VIEW_UPDATES))
         ],
         [
-            InlineKeyboardButton(
-                text = "Done",
-                callback_data = str(END)
-            )
+            InlineKeyboardButton(text = "Done", callback_data = str(END))
         ]
     ]
 
     keyboard = InlineKeyboardMarkup(buttons)
     
-    """Only print welcome_text if it is the first time in the main menu after starting the bot."""
+    # Only print welcome_text if it is the first time in the main menu after starting the bot.
     if not temp.get_temp_data(context, [SELECTING_ACTION, START_OVER]):
         update.message.reply_text(welcome_text)
         update.message.reply_text(
             text = text,
             reply_markup = keyboard
         )
+        # Stores a label to indicate that the next visit to the start menu will not be the first one.
         temp.store_temp_data(context, True, [SELECTING_ACTION, START_OVER])
     else:
-        """using callback_query.answer() means that coming back to start menu must be from InlineKeyboardButton"""
         update.callback_query.answer()
         update.callback_query.edit_message_text(
             text = text,
@@ -67,15 +77,27 @@ def selecting_action(update: Update, context: CallbackContext) -> str:
         )
     return SELECTING_ACTION
 
+"""
+- Displays a simple message with the two main commands that users can use to restart the bot if they are stuck. 
+"""
 def help(update: Update, context: CallbackContext) -> None:
     update.message.reply_text(f"/stop to end the bot, followed by /start to restart it!")
 
+"""
+- Function to stop the bot when in the start menu
+- Clears all temporary data (stored in context.user_data)
+- Returns END state
+"""
 def stop(update: Update, context: CallbackContext) -> int:
-    """End Conversation by command. Clears all user_data for a hard reset"""
     update.message.reply_text('Okay, bye.')
     temp.clear_temp_data(context)
     return END
 
+"""
+- Function to stop the bot from an InlineKeyboardButton.
+- Clears all temporary data (stores in context.user_data)
+- Returns END state
+"""
 def end(update: Update, context: CallbackContext) -> int:
     """End conversation from InlineKeyboardButton. Clears all user_data for a hard reset"""
     update.callback_query.answer()
@@ -84,22 +106,20 @@ def end(update: Update, context: CallbackContext) -> int:
     update.callback_query.edit_message_text(text=text)
     return END
 
-def stop_nested(update: Update, context: CallbackContext) -> str:
-    update.message.reply_text("Okay, bye.")
-    temp.clear_temp_data(context)
-    return STOPPING
-
 ########
 # MAIN #
 ########
 
+"""
+The main function that runs the bot. Creates the top level ConversationHandler
+"""
 def main():
-    updater = Updater("5457184587:AAE5SOisTmph4cvKrYPw1k33Rpx-NwW6BLA") 
+    updater = Updater("5376242962:AAGxLOy-Yd8MMYvoxBft_7wULmL-GB2eFcM") 
     dispatcher = updater.dispatcher
 
-    # db.drop_all_tables()
     db.create_all_tables()
 
+    # Supports the buttons for the start menu
     selection_handlers = [
         create_request.create_request_handler,
         view_requests.view_requests_handler,
@@ -109,6 +129,7 @@ def main():
     ]
 
     start_handler = ConversationHandler(
+        # start menu is only accessed when /start is sent by user
         entry_points = [
             CommandHandler("start", selecting_action)
         ],
@@ -118,8 +139,7 @@ def main():
         },
         fallbacks = [
             CommandHandler('stop', stop)
-        ],
-        allow_reentry=True
+        ]
     )
 
     dispatcher.add_handler(start_handler)

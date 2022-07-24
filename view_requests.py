@@ -12,6 +12,10 @@ from telegram.ext import (
     CommandHandler,
 )
 
+"""
+- Function that shows the user all the requests that the user is involved in as either the Payer or Debtor.
+- Returns VIEW_REQUESTS state.
+"""
 def view_requests(update: Update, context: CallbackContext) -> str:
     text = "View all requests you have created from oldest at the top to newest at the bottom.\n"
     username = get_username(update)
@@ -36,16 +40,29 @@ def view_requests(update: Update, context: CallbackContext) -> str:
     update.callback_query.edit_message_text(text=text, reply_markup=keyboard)
     return VIEW_REQUESTS
 
+"""
+- Stops the bot from within this sub-menu with the /stop command
+- Clears all temporary data to prepare for /start
+- Returns STOPPING state
+"""
 def stop_view_requests(update: Update, context: CallbackContext) -> str:
     update.message.reply_text(text = "Okay, bye!")
     temp.clear_temp_data(context)
     return STOPPING
 
+"""
+- Returns the user to the start menu.
+- Clears all temporary data used in this sub-menu
+- Returns END state
+"""
 def end_view_requests(update: Update, context: CallbackContext) -> str:
     temp.clear_temp_data(context, [REQUEST])
     main.selecting_action(update, context)
     return END
 
+"""
+Sub-menu ConversationHandler
+"""
 view_requests_handler = ConversationHandler(
     entry_points=[
         CallbackQueryHandler(view_requests, pattern=f"^{VIEW_REQUESTS}$")
