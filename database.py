@@ -163,7 +163,6 @@ def mark_request_as_paid_from_id(request_id: int) -> Tuple:
     return conn.commit()
 
 def mark_request_as_unpaid_from_id(request_id: int) -> Tuple:
-    print(request_id)
     curr.execute(f"""
     UPDATE Requests
     SET paid = False
@@ -172,7 +171,6 @@ def mark_request_as_unpaid_from_id(request_id: int) -> Tuple:
     return conn.commit()
 
 def mark_request_as_acknowledged_from_id(request_id: int) -> Tuple:
-    print(request_id)
     curr.execute(f"""
     UPDATE Requests
     SET acknowledged = True

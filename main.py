@@ -117,6 +117,7 @@ def main():
     updater = Updater("5376242962:AAGxLOy-Yd8MMYvoxBft_7wULmL-GB2eFcM") 
     dispatcher = updater.dispatcher
 
+    db.drop_all_tables()
     db.create_all_tables()
 
     # Supports the buttons for the start menu
